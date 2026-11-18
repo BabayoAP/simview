@@ -3,14 +3,22 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest  # noqa: E402
-from qtpy.QtCore import QSettings  # noqa: E402
+from qtpy.QtCore import QEvent, QSettings  # noqa: E402
 
 from simview.ui.app import create_app  # noqa: E402
 
 
 @pytest.fixture(scope="session")
 def qapp():
-    return create_app([], "dark")
+    app = create_app([], "dark")
+    yield app
+    # Tear windows down while the QApplication is still alive. Leaving them to Python's
+    # exit-time GC segfaults (Linux) or exits non-zero (Windows) after the tests pass.
+    for widget in app.topLevelWidgets():
+        widget.close()
+        widget.deleteLater()
+    app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()
 
 
 @pytest.fixture
