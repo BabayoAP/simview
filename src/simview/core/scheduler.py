@@ -33,6 +33,8 @@ class Sim:
             e.validate()
         if scene.world is not None:
             scene.world.reset()
+        for d in scene.diagrams.values():
+            d.reset()
         # Controllers run every `period` ticks, starting at tick 0 (RB-06).
         self.controllers = [
             (c, 1 if c.rate is None else round(1.0 / (c.rate * self.dt))) for c in scene.controllers

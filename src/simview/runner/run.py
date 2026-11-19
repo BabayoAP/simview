@@ -41,6 +41,22 @@ class Run:
     def columns(self) -> list[str]:
         return pq.read_schema(self.path).names
 
+    def workspace(self) -> dict[str, np.ndarray]:
+        """To Workspace blocks' variables (BD-02): a record array per variable with `t` and
+        `value` (or `value[0]`, `value[1]`, ... for vectors)."""
+        import json
+
+        meta = json.loads((pq.read_schema(self.path).metadata or {}).get(b"simview", b"{}"))
+        out: dict[str, np.ndarray] = {}
+        for var, signals in (meta.get("to_workspace") or {}).items():
+            names = ["value"] if len(signals) == 1 else [f"value[{k}]" for k in range(len(signals))]
+            rec = np.empty(len(self["t"]), dtype=[("t", float)] + [(n, float) for n in names])
+            rec["t"] = self["t"]
+            for n, sig in zip(names, signals, strict=True):
+                rec[n] = self[sig]
+            out[var] = rec
+        return out
+
     def to_pandas(self) -> Any:  # noqa: ANN401 - pandas is optional, not a dependency
         """All logged signals as a DataFrame (requires pandas to be installed)."""
         return self.table().to_pandas()
@@ -68,6 +84,7 @@ def run_metadata(
         "source": source,
         "params": scene.params.to_json() if params is None else params,  # values at the start
         "units": signal_units(scene),
+        "to_workspace": {k: v for d in scene.diagrams.values() for k, v in d.to_workspace.items()},
     }
 
 

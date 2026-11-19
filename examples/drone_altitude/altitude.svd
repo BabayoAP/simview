@@ -1,0 +1,150 @@
+{
+  "blocks": [
+    {
+      "id": "target",
+      "params": {
+        "value": 2.0
+      },
+      "pos": [
+        0.0,
+        0.0
+      ],
+      "type": "Constant"
+    },
+    {
+      "id": "drone_z",
+      "params": {
+        "entity": "drone",
+        "states": [
+          "z"
+        ]
+      },
+      "pos": [
+        0.0,
+        120.0
+      ],
+      "type": "EntityState"
+    },
+    {
+      "id": "error",
+      "params": {
+        "signs": "+-"
+      },
+      "pos": [
+        160.0,
+        40.0
+      ],
+      "type": "Sum"
+    },
+    {
+      "id": "pid",
+      "params": {
+        "kd": 4.0,
+        "ki": 2.0,
+        "kp": 8.0,
+        "lower": -11.772,
+        "upper": 15.0
+      },
+      "pos": [
+        300.0,
+        40.0
+      ],
+      "type": "PID"
+    },
+    {
+      "id": "hover",
+      "params": {
+        "value": 11.772
+      },
+      "pos": [
+        300.0,
+        160.0
+      ],
+      "type": "Constant"
+    },
+    {
+      "id": "thrust",
+      "params": {
+        "signs": "++"
+      },
+      "pos": [
+        460.0,
+        80.0
+      ],
+      "type": "Sum"
+    },
+    {
+      "id": "motor",
+      "params": {
+        "entity": "drone"
+      },
+      "pos": [
+        620.0,
+        80.0
+      ],
+      "type": "EntityInput"
+    },
+    {
+      "id": "altitude",
+      "params": {
+        "inputs": 2
+      },
+      "pos": [
+        300.0,
+        260.0
+      ],
+      "type": "Scope"
+    },
+    {
+      "id": "log_thrust",
+      "params": {
+        "variable": "thrust"
+      },
+      "pos": [
+        620.0,
+        200.0
+      ],
+      "type": "ToWorkspace"
+    }
+  ],
+  "format": 1,
+  "name": "altitude",
+  "wires": [
+    {
+      "from": "target:0",
+      "to": "error:0"
+    },
+    {
+      "from": "drone_z:0",
+      "to": "error:1"
+    },
+    {
+      "from": "error:0",
+      "to": "pid:0"
+    },
+    {
+      "from": "pid:0",
+      "to": "thrust:0"
+    },
+    {
+      "from": "hover:0",
+      "to": "thrust:1"
+    },
+    {
+      "from": "thrust:0",
+      "to": "motor:0"
+    },
+    {
+      "from": "drone_z:0",
+      "to": "altitude:0"
+    },
+    {
+      "from": "target:0",
+      "to": "altitude:1"
+    },
+    {
+      "from": "thrust:0",
+      "to": "log_thrust:0"
+    }
+  ]
+}

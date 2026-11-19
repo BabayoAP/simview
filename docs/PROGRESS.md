@@ -13,7 +13,8 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M5: Timeline + plots | ✅ Approved 2026-11-19 | `main` | VP-05, DA-01–DA-04, DA-07, DS-09 |
 | M5b: Run investigation (PRD 1.2) | ✅ Approved 2026-11-19 | `main` | RI-01–RI-06 |
 | M6: Console + workspace | ✅ Approved 2026-11-19 | `main` | SC-01–SC-05, IO-02, IO-04 |
-| M7–M10 | Not started | | see PRD §10 |
+| M7: Block editor | **In progress**: engine done, editor UI next | `m7-block-editor` | BD-01–BD-08, DS-10 |
+| M8–M10 | Not started | | see PRD §10 |
 
 ## M1: Skeleton + design system
 
@@ -234,6 +235,32 @@ numbers, highlighting, toolbar), and the workspace (Name / Value / Shape / Type)
 the array table viewer and the Import / New Project file dialogs by eye (both tested), and the
 console on a real display alongside the 3D view.
 
+## M7: Block editor (in progress)
+
+Done (engine, Qt-free, `simview/blocks/`):
+- `graph.py`: the diagram model, editing (add, connect, remove, rename), `group` / `ungroup`
+  into subsystems, and `.svd` JSON files (D-079, D-080).
+- `library/`: the BD-02 blocks in one file per family, plus Python Function (BD-03), Entity
+  State / Entity Input (BD-04), and Inport / Outport; `register` for toolbox blocks (D-076).
+- `compiler.py`: flattening, topological order, algebraic-loop detection, and per-block
+  problems with shape probing (BD-05, D-077).
+- `runtime.py` + `scene.add_diagram(...)`: diagrams run as sampled systems in the scene and
+  every block output is logged (D-075, D-078). The sim process describes each diagram's file
+  and its Scopes' signals to the UI (for BD-08).
+- Done-when ✅ (engine side): `examples/drone_altitude/` runs the same PID as a script and as a
+  diagram; the flights match within 1e-9 (exactly, in fact; test `tests/blocks/test_pid_match.py`).
+  Vertical drone dynamics stand in for the M8 quadrotor (D-081).
+- 365 tests (17 new in `tests/blocks/`).
+
+Left for M7 (the editor UI, `ui/blockeditor/`):
+- BD-01 + DS-10: the canvas (dot grid, 8 px snap, pan/zoom, rounded blocks with category
+  strips, typed port colors, orthogonal wires, live wire values on hover), drag/connect/
+  delete, quick-add palette on double-click, a parameter editor, undo/redo, grouping
+  (Ctrl+G), and errors as red outlines with an inline message.
+- Placement: a "Diagram" tab next to the 3D view in the central area (the Model preset is v1).
+- BD-08 in the app: each Scope's plot docked into the plot panel when a scene loads.
+- Design tokens: category and port-type colors (checked for contrast in both themes).
+
 ## Next
 
-1. Start **M7: Block editor** (BD-01–BD-08, DS-10).
+1. Build the M7 editor UI (list above), then the M7 summary and approval.

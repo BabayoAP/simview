@@ -106,6 +106,7 @@ class Scene:
         self.file: Path | None = None  # the scene file it was loaded from (RI-01), if any
         # SC-05: live parameters; scalars are logged as `params.<name>` channels.
         self.params = Params(on_declare=self._param_declared)
+        self.diagrams: dict[str, Any] = {}  # BD-04/05: name -> blocks.runtime.DiagramRun
 
     def _param_declared(self, name: str, value: Value) -> None:
         if isinstance(value, float):
@@ -347,6 +348,39 @@ class Scene:
             return fn
 
         return register
+
+    def add_diagram(
+        self,
+        diagram: Any,
+        *,
+        name: str | None = None,
+        rate: float | None = None,
+        integrator: str = "rk4",
+    ) -> Any:
+        """Run a block diagram (a `.svd` file or a `simview.blocks.Diagram`) in this scene, at
+        `rate` Hz (every tick if None). Add the entities it reads or drives first. A relative
+        path is relative to the scene file."""
+        import sys
+
+        from simview.blocks.graph import Diagram
+        from simview.blocks.runtime import DiagramRun
+
+        if not isinstance(diagram, Diagram):
+            path = Path(diagram)
+            if not path.is_absolute():
+                caller = sys._getframe(1).f_globals.get("__file__")
+                if caller:
+                    path = Path(caller).resolve().parent / path
+            diagram = Diagram.load(path)
+        name = name or diagram.name
+        if name in self.diagrams or name in self.entities or "." in name:
+            raise ValueError(f"diagram name {name!r} is taken (or contains '.'); pass name=")
+        if rate is not None:
+            self.controller(rate)  # validates the rate
+        base = diagram.path.parent if diagram.path is not None else None
+        run = DiagramRun(self, diagram, name, rate, integrator, base)  # type: ignore[arg-type]
+        self.diagrams[name] = run
+        return run
 
     def log(self, name: str, fn: LogFn, unit: str = "") -> None:
         """Log a user-tagged channel each tick. `fn(sim)` returns a float (SE-06).

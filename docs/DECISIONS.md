@@ -540,3 +540,53 @@ every kernel message through such signals, so each console cell and each new win
 `True`'s reference count until it was freed. Python 3.12 made `True` and `False` immortal, so
 there the bug is harmless. `pyproject.toml` keeps `PySide6<6.12` on Python < 3.12 only; lift it
 once a fixed PySide6 release is out.
+
+## M7
+
+**D-075 — How a diagram runs.** A diagram is a sampled system run as one of the scene's
+controllers, every tick or at `rate` Hz (`scene.add_diagram("x.svd", rate=100)`). At each sample
+it computes every block's outputs in topological order, writes Entity Input blocks (before the
+entities move that tick), updates discrete blocks, then integrates its continuous states over
+the sample period with the chosen integrator (`rk4` by default), holding discrete outputs and
+entity readings (the same input hold as D-013). So a diagram and a script controller with the
+same math give the same numbers: the M7 check passes with an exact match, not just within 1e-9.
+
+**D-076 — Block semantics.** PID is discrete at the diagram's sample period Ts:
+`I += e·Ts` (skipped while saturated and pushing further into the limit: anti-windup),
+`D = (e - e_prev)/Ts` (0 at the first sample), `u = kp·e + ki·I + kd·D`, clipped to optional
+limits. Derivative is the backward difference at samples. Sine follows Simulink (amplitude,
+bias, frequency in rad/s, phase). Integrator's shape is its initial value's (a vector integrator
+needs a vector initial value). Gain with a matrix multiplies; otherwise it scales elementwise.
+Mux concatenates; Demux splits evenly. Entity State has one output per chosen state (all by
+default, named after them); Entity Input sets the entity's whole `u` (a number or a vector).
+
+**D-077 — Shapes and errors.** Signals are scalars, vectors, or matrices (no bus block is in the
+MVP list, so no bus type). Shapes are found by evaluating the diagram once at t = 0 (a probe):
+a mismatch is reported on the block where it happens. Every problem comes back at once as
+`Issue(block path, message)` (unconnected input, bad parameter, missing entity, algebraic
+loop, shape mismatch), so the editor can outline each offending block. An algebraic loop is a
+cycle through direct-feedthrough blocks only (Tarjan SCCs); every block in it is reported.
+
+**D-078 — Logging block signals (SE-06).** Every block output is logged as
+`<diagram>.<block path>.<port>` (`[k]` per element of a vector or matrix), e.g.
+`altitude.pid.y`, `altitude.ctrl/gain1.y` inside a subsystem. Outputs hold between samples.
+The logger and the controller share one evaluation per sample, so the row for tick k shows the
+outputs the controller used at tick k. To Workspace blocks are recorded in the run metadata;
+`run.workspace()` returns each as a record array (`t`, `value`).
+
+**D-079 — `.svd` files (BD-06).** JSON with sorted keys and 2-space indent, `format: 1`, a
+`blocks` list (id, type, params, pos, and a nested `diagram` for subsystems) and a `wires`
+list of `{"from": "block:port", "to": "block:port"}` with ports numbered from 0. One edited
+parameter changes one line. A Python Function block saves its function as `"file.py:name"`
+(relative to the diagram file) or `"module:name"`; a callable passed from a script works but
+can't be saved.
+
+**D-080 — Subsystems (BD-07).** `diagram.group(ids)` moves blocks into a Subsystem; each
+distinct outside source becomes an Inport and each distinct inside source an Outport.
+`ungroup` reverses it. The compiler flattens subsystems before running (inner blocks keep
+their path), so grouping doesn't change results (tested bit for bit).
+
+**D-081 — The M7 check uses vertical drone dynamics.** The PRD's check names a quadrotor, but
+the 6-DOF quadrotor is part of the Aerospace toolbox (M8). `examples/drone_altitude/` uses the
+quadrotor's vertical axis (m·z'' = thrust − m·g) with the same PID as a script (`script.py`) and
+as a diagram (`blocks.py` + `altitude.svd`). Rerun the check with the full quadrotor in M8.

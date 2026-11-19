@@ -38,6 +38,7 @@ def test_log_has_every_state_and_channel_each_tick(tmp_path):
         "version": "0.1.0",
         "source": "sim",  # RI-01 catalog fields (M5b); the date and scene are in the sidecar
         "params": {},
+        "to_workspace": {},
         "units": {},
     }
 

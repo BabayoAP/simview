@@ -78,6 +78,8 @@ class Description:
     # VP-04 trail settings: entity -> (seconds, color or None)
     trails: dict[str, tuple[float, str | None]] = field(default_factory=dict)
     params: dict[str, Any] = field(default_factory=dict)  # SC-05: values when loaded
+    diagrams: dict[str, str | None] = field(default_factory=dict)  # name -> .svd path (M7)
+    scopes: dict[str, list[str]] = field(default_factory=dict)  # BD-08: scope -> signals
 
     def entity_of_body(self, body: int) -> str | None:
         for e in self.entities:
@@ -108,6 +110,11 @@ def describe(scene: Scene) -> Description:
         },
         trails={k: (v.seconds, v.color) for k, v in scene.trails.items()},
         params=scene.params.to_dict(),
+        diagrams={
+            k: (str(d.diagram.path) if d.diagram.path is not None else None)
+            for k, d in scene.diagrams.items()
+        },
+        scopes={k: v for d in scene.diagrams.values() for k, v in d.scopes.items()},
     )
     world = scene.world
     if world is not None:
