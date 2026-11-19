@@ -79,7 +79,8 @@ def test_finding_click_opens_the_run_and_moves_there_within_100_ms(qapp, window)
     assert window.timeline.slider.value() == h.index_at(finding.start)
     plot = next(p for p in window.plots.plots if "ur5.shoulder_pan_joint.v" in p.names)
     x0, x1 = plot.plot.vb.viewRange()[0]
-    assert x0 <= finding.start and finding.end <= x1 and x1 - x0 < h.time_of(h.n - 1)
+    pad = max(0.5 * (finding.end - finding.start), 50 * h.dt)  # the window, plus context
+    assert (x0, x1) == (pytest.approx(finding.start - pad), pytest.approx(finding.end + pad))
 
 
 def test_an_opened_run_replays_and_stops_at_its_end(qapp, window):
