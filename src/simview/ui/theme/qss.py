@@ -57,6 +57,10 @@ QToolBar QToolButton {{
 QToolButton:hover, QPushButton:hover {{
     background: {c["bg.elevated"]};
 }}
+QToolBar QToolButton:checked {{
+    background: {c["bg.elevated"]};
+    color: {c["accent"]};
+}}
 QToolButton:focus, QPushButton:focus, QLineEdit:focus, QListWidget:focus {{
     border: {t.FOCUS_RING}px solid {c["accent"]};
 }}
@@ -101,6 +105,14 @@ QLabel[role="panelTitle"] {{
 QLabel[role="mono"] {{
     font-family: "{t.FONT_MONO}";
     color: {c["text.secondary"]};
+    font-size: {t.FONT_SIZE["secondary"]}px;
+}}
+QLabel[role="error"] {{
+    color: {c["state.error"]};
+    font-size: {t.FONT_SIZE["secondary"]}px;
+}}
+QLineEdit[role="mono"] {{
+    font-family: "{t.FONT_MONO}";
     font-size: {t.FONT_SIZE["secondary"]}px;
 }}
 QPlainTextEdit[role="code"], QTextEdit[role="code"] {{

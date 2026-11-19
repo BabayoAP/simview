@@ -257,7 +257,10 @@ def check(
                 continue
             src = source(*got[0]) if got else None
             if src is None:
-                issues.append(Issue(path, f"input {names[k]} is not connected"))
+                failed = got and got[0][0] in leaves and got[0][0] not in made
+                if not failed or leaves[got[0][0]].type in _PASS:
+                    issues.append(Issue(path, f"input {names[k]} is not connected"))
+                # else: its source block has a problem of its own, reported there
                 continue
             if src[1] >= made[src[0]].n_out:
                 issues.append(Issue(path, f"input {names[k]} comes from a missing output"))

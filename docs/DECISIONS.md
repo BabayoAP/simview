@@ -590,3 +590,54 @@ their path), so grouping doesn't change results (tested bit for bit).
 the 6-DOF quadrotor is part of the Aerospace toolbox (M8). `examples/drone_altitude/` uses the
 quadrotor's vertical axis (m·z'' = thrust − m·g) with the same PID as a script (`script.py`) and
 as a diagram (`blocks.py` + `altitude.svd`). Rerun the check with the full quadrotor in M8.
+
+**D-082 — Where the editor lives (BD-01).** The central area holds two pages, the 3D view and
+the diagram, switched by "3D View" / "Diagram" buttons in the main toolbar (Ctrl+1 / Ctrl+2,
+also in the View menu and the command palette). A tab bar above the central area would cost
+about 28 px of height and drop the §7.2.1 content share below its 68% floor (measured: 66%).
+The editor is one diagram at a time with New / Open / Save (File menu, Project button, and its
+own toolbar); a new window starts with an untitled, empty diagram whose canvas says
+"Double-click to add a block." (§7.8's empty state). The parameter panel sits to the right of
+the canvas, 180 to 240 px wide.
+
+**D-083 — Editing and undo.** Every edit (add, connect, delete, move, rename, parameter,
+group, ungroup) is one undo step; undo restores a JSON snapshot of the whole diagram (an
+`.svd` file is a few kB). Connecting to an input that already has a wire replaces it (an input
+takes one wire, BD-05). A block's `pos` is its top-left corner; positions snap to 8 px and grid
+dots are drawn every 16 px. Parameters are typed as JSON or Python literals (`2.5`, `[1, 0]`);
+anything else is taken as text, so `+-` and `drone` need no quotes. Ctrl+S on the Diagram page
+saves the diagram (with a project open, it saves the project, which saves the diagram).
+
+**D-084 — Checking in the editor (BD-05).** The editor re-runs `blocks.check` after every
+edit, with a stand-in scene built from the sim process's description (entity names and state
+names), so Entity State shows one port per state of its entity and a wrong entity name is
+reported on the block. Without a scene, entity blocks report "no entity ... (entities: none)".
+Problems on blocks inside a subsystem are also shown on the subsystem block. The compiler no
+longer reports "input ... is not connected" on a block fed by a block that failed (the failing
+block has its own message), so one bad block is outlined once, not along the whole chain.
+
+**D-085 — When edits run, and projects.** A running scene compiled its diagram when it loaded
+(SE-02: the sim is a separate process), so edits run after a reload. Saving a diagram that the
+open scene runs reloads the scene right away if time isn't moving; while it runs, the status
+bar says to stop it first. When a scene loads, the editor opens the scene's (first) diagram
+unless it has unsaved edits to another one. A project records the open diagram as `diagram`
+in `project.json` when it is inside the project; Save Project saves an untitled diagram to
+`diagrams/diagram.svd`. A diagram outside the project stays where it is (the scene refers to it
+by a relative path, D-072) and opens with its scene.
+
+**D-086 — Live values and port colors (§7.7).** Hovering a wire shows its source's value at
+the timeline's current row (live or scrubbed), `pid.y = 0.2101`, or `[a, b]` for a vector; a
+diagram that the loaded scene doesn't run says "run the sim to see its value". Ports are
+colored by the probed shape of their signal: scalar, vector, matrix (D-077: no bus). Input
+ports and ports whose shape isn't known (the diagram doesn't compile) are drawn hollow; wires
+take their source port's color. The category and port colors are tokens, ≥ 3:1 on the panel
+surfaces in both themes (tested).
+
+**D-087 — Canvas interaction and Scope plots (BD-01, BD-07, BD-08).** Left-drag on the canvas
+selects with a rubber band; middle-drag or Alt + drag pans; the wheel zooms around the mouse
+(25% to 400%); Ctrl+0 fits the diagram. Drag from any port to a port of the other direction to
+connect. Delete / Backspace removes the selection, Ctrl+G groups the selected blocks into a
+subsystem, Ctrl+Shift+G ungroups one, Ctrl+A selects all. Double-click a subsystem to open it;
+breadcrumbs ("altitude › ctrl") and the Up button go back. Each Scope block gets a time plot in
+the plot panel when its scene loads, titled `<diagram>.<scope>` with all its inputs; reloading
+the scene replaces those plots (plots the user added are kept).

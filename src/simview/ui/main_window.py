@@ -27,8 +27,10 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from simview.blocks.graph import SUFFIX as SVD
 from simview.ui import theme
 from simview.ui.actions import ActionRegistry
+from simview.ui.blockeditor import BlockEditor
 from simview.ui.command_palette import CommandPalette
 from simview.ui.console.editor import EditorPanel
 from simview.ui.console.handle import SimHandle
@@ -68,6 +70,7 @@ DOCKS: tuple[tuple[str, str, Qt.DockWidgetArea], ...] = (
     ("runs", "Runs", Qt.DockWidgetArea.BottomDockWidgetArea),
 )
 LAYOUT_VERSION = 3  # 2: M5 panels, dropping layouts with the M4 viewport bug; 3: Runs (M5b)
+CENTRAL_PAGES = ("3D View", "Diagram")  # BD-01: the block editor sits next to the 3D view
 COMPARE_ATOL, COMPARE_RTOL = 1e-6, 1e-6  # run comparison tolerance in the app (D-059)
 RUNS_ENV = "SIMVIEW_RUNS"  # overrides the run folder (default: `runs/` next to the scene file)
 
@@ -104,6 +107,13 @@ class MainWindow(QMainWindow):
         self.console = ConsoleWidget()  # SC-01, works without a scene
         self.editor = EditorPanel()  # SC-02
         self.workspace = WorkspaceBrowser()  # SC-03
+        self.block_editor = BlockEditor()  # BD-01..BD-08
+        self.block_editor.value_lookup = self.diagram_value
+        self.block_editor.default_dir = self._diagram_dir
+        self.block_editor.status.connect(lambda m: self.statusBar().showMessage(m, 4000))
+        self.block_editor.saved.connect(self._diagram_saved)
+        self.scene_diagrams: dict[str, Path] = {}  # name -> .svd file, of the loaded scene
+        self.scope_plots: list[Any] = []  # BD-08: the Scope blocks' plots
         self.sim_handle = SimHandle(self)  # `sim` in the console (SC-05)
         self.array_viewers: list[ArrayViewer] = []
         self.signal_tree: SignalTree | None = None
@@ -156,6 +166,11 @@ class MainWindow(QMainWindow):
         reg("timeline.start", "Go to Start of Recording", self.to_start, None, "Simulation")
         reg("timeline.live", "Go to Live (End of Recording)", self.to_live, None, "Simulation")
         reg("plots.export_data", "Export Data…", self.export_data_dialog, None, "File")
+        reg("diagram.new", "New Diagram", self.new_diagram, None, "File")
+        reg("diagram.open", "Open Diagram…", self.open_diagram_dialog, None, "File")
+        reg("diagram.save", "Save Diagram", self.save_diagram, None, "File")
+        reg("view.3d", "Show 3D View", lambda: self.show_central(0), "Ctrl+1", "View")
+        reg("view.diagram", "Show Diagram", lambda: self.show_central(1), "Ctrl+2", "View")
         reg("view.theme", "Toggle Light/Dark Theme", self.toggle_theme, None, "View")
         reg("view.reset_layout", "Reset Layout", self.reset_layout, None, "View")
         for name, title, _ in DOCKS:
@@ -194,6 +209,7 @@ class MainWindow(QMainWindow):
             self.plots.set_theme(new)
         self.console.set_theme(new)
         self.editor.set_theme(new)
+        self.block_editor.set_theme(new)
 
     # ----- chrome --------------------------------------------------------------------
     def _build_menu(self) -> None:
@@ -223,6 +239,8 @@ class MainWindow(QMainWindow):
             "file.open",
             "file.save",
             "file.import_data",
+            "diagram.new",
+            "diagram.open",
             "file.start",
         ):
             menu.addAction(self.actions_.get(aid))
@@ -246,6 +264,20 @@ class MainWindow(QMainWindow):
         self.speed_box.setCurrentIndex(3)  # 1× (real time)
         self.speed_box.currentIndexChanged.connect(self._speed_changed)
         tb.addWidget(self.speed_box)
+        tb.addSeparator()
+
+        self.page_buttons: list[QToolButton] = []
+        for i, (label, ic) in enumerate(zip(CENTRAL_PAGES, ("box", "workflow"), strict=True)):
+            b = QToolButton(tb)
+            b.setText(label)
+            b.setIcon(icon(ic))
+            b.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            b.setCheckable(True)
+            b.setChecked(i == 0)
+            b.setToolTip(f"{label} (Ctrl+{i + 1})")
+            b.clicked.connect(lambda _c=False, k=i: self.show_central(k))
+            tb.addWidget(b)
+            self.page_buttons.append(b)
         tb.addSeparator()
 
         self.dt_label = QLabel("dt 1 ms", tb)
@@ -279,7 +311,18 @@ class MainWindow(QMainWindow):
         self.central = QStackedWidget(self)
         self.central.setObjectName("CentralArea")
         self.central.addWidget(self.viewport)
-        self.setCentralWidget(self.central)
+        # 3D view or diagram, switched from the toolbar (a tab bar here would cost the 3D
+        # view its §7.2.1 share of the window).
+        self.central_pages = QStackedWidget(self)
+        self.central_pages.setObjectName("CentralArea")
+        self.central_pages.addWidget(self.central)
+        self.central_pages.addWidget(self.block_editor)
+        self.setCentralWidget(self.central_pages)
+
+    def show_central(self, index: int) -> None:
+        self.central_pages.setCurrentIndex(index)
+        for i, b in enumerate(self.page_buttons):
+            b.setChecked(i == index)
 
     def _dock_content(self, name: str) -> QWidget:
         a = self.actions_.get
@@ -651,6 +694,7 @@ class MainWindow(QMainWindow):
             assert self.signal_tree is not None and self.plots is not None
             self.signal_tree.load(layout)
             self.plots.set_history(self.history)
+        self._load_diagrams(desc)
         self.dt_label.setText(f"dt {desc.dt * 1e3:g} ms")
         self.sim_handle.loaded(desc.params)
         self.client.set_speed(float(self.speed_box.currentData()))
@@ -661,6 +705,85 @@ class MainWindow(QMainWindow):
         if self._pending_run is not None:  # a saved run waits for its scene
             run, self._pending_run = self._pending_run, None
             self.client.replay(run.path)
+
+    # ----- block diagrams (BD-01, BD-04, BD-08) -------------------------------------
+    def _load_diagrams(self, desc: Any) -> None:
+        """A scene was loaded: the editor checks entity blocks against its entities, opens
+        the diagram it runs (unless one is being edited), and each Scope block gets a plot."""
+        ed = self.block_editor
+        ed.set_entities({e.name: tuple(e.state_names) for e in desc.entities})
+        self.scene_diagrams = {k: Path(v).resolve() for k, v in desc.diagrams.items() if v}
+        paths = list(self.scene_diagrams.values())
+        here = ed.path.resolve() if ed.path is not None else None
+        if paths and here not in paths and (ed.doc.is_blank or not ed.doc.modified):
+            ed.open(paths[0])
+        if self.plots is not None:
+            for view in self.scope_plots:
+                if view in self.plots.plots:
+                    self.plots.remove_plot(view)
+            self.scope_plots = []
+            for scope, signals in desc.scopes.items():
+                if not signals or self.history is None:
+                    continue
+                view = self.plots.add_plot("time", list(signals))
+                view.title.setText(scope)
+                view.hint.setText("Scope")
+                self.scope_plots.append(view)
+
+    def _diagram_name(self) -> str | None:
+        """The name the loaded scene runs the edited diagram under, if it runs it."""
+        path = self.block_editor.path
+        if path is None:
+            return None
+        path = path.resolve()
+        return next((k for k, v in self.scene_diagrams.items() if v == path), None)
+
+    def diagram_value(self, block: str, port: str) -> str | None:
+        """§7.7: a wire's value at the timeline's row, for the hover tooltip."""
+        name, h = self._diagram_name(), self.history
+        if name is None or h is None or h.n == 0:
+            return None
+        base = f"{name}.{block}.{port}"
+        row = self.playback.index
+        if base in h.units:
+            return f"{float(h.signal(base)[row]):.6g}"
+        values, k = [], 0
+        while f"{base}[{k}]" in h.units:
+            values.append(f"{float(h.signal(f'{base}[{k}]')[row]):.6g}")
+            k += 1
+        return f"[{', '.join(values)}]" if values else None
+
+    def _diagram_dir(self) -> Path | None:
+        if self.project is not None:
+            return self.project.folder("diagrams")
+        return self.scene_path.parent if self.scene_path is not None else None
+
+    def new_diagram(self) -> None:
+        self.block_editor.new()
+        self.show_central(1)
+
+    def open_diagram_dialog(self) -> None:
+        self.show_central(1)
+        self.block_editor.open_dialog()
+
+    def open_diagram(self, path: str | Path) -> None:
+        self.block_editor.open(path)
+        self.show_central(1)
+
+    def save_diagram(self) -> Path | None:
+        return self.block_editor.save()
+
+    def _diagram_saved(self, path: Path) -> None:
+        """Edits run once the scene reloads (D-085): reload now when the open scene runs
+        this diagram and time isn't moving."""
+        if self.scene_path is None or self._diagram_name() is None:
+            return
+        if self.running:
+            self.statusBar().showMessage(
+                f"Saved {path.name}. Stop the simulation to run the changes.", 5000
+            )
+            return
+        self.load_scene(self.scene_path)
 
     def _on_stopped(self, code: int | None) -> None:
         """NF-10: the sim process died; the UI stays up and Run starts a new one."""
@@ -823,6 +946,9 @@ class MainWindow(QMainWindow):
         script = p.script_path
         if script is not None and script.is_file():
             self.editor.open(script)
+        diagram = p.diagram_path
+        if diagram is not None and diagram.is_file():
+            self.block_editor.open(diagram)
         scene = p.scene_path
         if scene is not None and scene.is_file():
             self.load_scene(scene)
@@ -839,7 +965,9 @@ class MainWindow(QMainWindow):
         """Ctrl+S: save the project. With no project open, save the editor's script if it has
         one (or unsaved text); with nothing to save, offer a new project."""
         ed = self.editor
-        if self.project is not None:
+        if self.central_pages.currentIndex() == 1 and self.project is None:
+            self.save_diagram()
+        elif self.project is not None:
             self.save_project()
         elif ed.path is not None or ed.editor.document().isModified():
             ed.save()
@@ -861,6 +989,13 @@ class MainWindow(QMainWindow):
             ed.save_to(ed.path)
             p.script = p.relative(ed.path)
             ed.file_changed.emit(ed.path)
+        diagram = self.block_editor
+        if diagram.path is not None or diagram.doc.root.blocks:
+            if diagram.path is None:
+                diagram.save_as(p.folder("diagrams") / f"diagram{SVD}")
+            elif diagram.doc.modified:
+                diagram.save_as(None)
+            p.diagram = p.relative(diagram.path) if diagram.path is not None else None
         if self.scene_path is not None:
             self.scene_path = p.set_scene(self.scene_path)
         manifest = p.save()

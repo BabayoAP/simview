@@ -35,6 +35,7 @@ class Project:
     name: str
     scene: str | None = None  # relative to the project folder
     script: str | None = None
+    diagram: str | None = None  # the diagram open in the block editor (M7)
     extra: dict[str, Any] = field(default_factory=dict)  # keys from newer versions, kept
 
     # -- folders ----------------------------------------------------------------------------
@@ -52,6 +53,10 @@ class Project:
     @property
     def script_path(self) -> Path | None:
         return self.path / self.script if self.script else None
+
+    @property
+    def diagram_path(self) -> Path | None:
+        return self.path / self.diagram if self.diagram else None
 
     def relative(self, path: Path) -> str | None:
         """`path` relative to the project (posix), or None if it's outside."""
@@ -105,6 +110,7 @@ class Project:
             "name": self.name,
             "scene": self.scene,
             "script": self.script,
+            **({"diagram": self.diagram} if self.diagram else {}),
         }
 
     def save(self) -> Path:
@@ -146,12 +152,13 @@ def load(path: str | Path) -> Project:
         raise ProjectError(f"{manifest} is not valid JSON: {exc}") from exc
     if int(data.get("format", 0)) > FORMAT:
         raise ProjectError(f"{path.name} was saved by a newer SimView (format {data['format']})")
-    known = {"format", "name", "scene", "script"}
+    known = {"format", "name", "scene", "script", "diagram"}
     project = Project(
         path=path,
         name=str(data.get("name") or path.stem),
         scene=data.get("scene"),
         script=data.get("script"),
+        diagram=data.get("diagram"),
         extra={k: v for k, v in data.items() if k not in known},
     )
     for f in FOLDERS:  # a hand-made or older project may lack some

@@ -60,7 +60,7 @@ def test_the_3d_view_keeps_the_central_area(qapp, window):
     window.plots.add_plot("time", ["tool_error"])
     window.plots.add_plot("time", ["tool_error"])
     qapp.processEvents()
-    assert window.centralWidget().currentWidget() is window.sim_view
+    assert window.central.currentWidget() is window.sim_view
     assert window.centralWidget().width() == width > 0.5 * window.width()
     assert window.docks["plots"].height() < 0.4 * window.height()
 

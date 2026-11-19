@@ -13,7 +13,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M5: Timeline + plots | ✅ Approved 2026-11-19 | `main` | VP-05, DA-01–DA-04, DA-07, DS-09 |
 | M5b: Run investigation (PRD 1.2) | ✅ Approved 2026-11-19 | `main` | RI-01–RI-06 |
 | M6: Console + workspace | ✅ Approved 2026-11-19 | `main` | SC-01–SC-05, IO-02, IO-04 |
-| M7: Block editor | **In progress**: engine done, editor UI next | `m7-block-editor` | BD-01–BD-08, DS-10 |
+| M7: Block editor | **Done, awaiting approval** | `m7-block-editor` | BD-01–BD-08, DS-10 |
 | M8–M10 | Not started | | see PRD §10 |
 
 ## M1: Skeleton + design system
@@ -235,34 +235,62 @@ numbers, highlighting, toolbar), and the workspace (Name / Value / Shape / Type)
 the array table viewer and the Import / New Project file dialogs by eye (both tested), and the
 console on a real display alongside the 3D view.
 
-## M7: Block editor (in progress)
+## M7: Block editor
 
-Done (engine, Qt-free, `simview/blocks/`):
+Engine (Qt-free, `simview/blocks/`, built on the Mac):
 - `graph.py`: the diagram model, editing (add, connect, remove, rename), `group` / `ungroup`
   into subsystems, and `.svd` JSON files (D-079, D-080).
 - `library/`: the BD-02 blocks in one file per family, plus Python Function (BD-03), Entity
   State / Entity Input (BD-04), and Inport / Outport; `register` for toolbox blocks (D-076).
 - `compiler.py`: flattening, topological order, algebraic-loop detection, and per-block
-  problems with shape probing (BD-05, D-077).
+  problems with shape probing (BD-05, D-077). A block fed by a failed block no longer also
+  reports "not connected" (D-084).
 - `runtime.py` + `scene.add_diagram(...)`: diagrams run as sampled systems in the scene and
   every block output is logged (D-075, D-078). The sim process describes each diagram's file
-  and its Scopes' signals to the UI (for BD-08).
-- Done-when ✅ (engine side): `examples/drone_altitude/` runs the same PID as a script and as a
-  diagram; the flights match within 1e-9 (exactly, in fact; test `tests/blocks/test_pid_match.py`).
-  Vertical drone dynamics stand in for the M8 quadrotor (D-081).
-- 365 tests (17 new in `tests/blocks/`), lint clean with ruff 0.17.5, `core` + `blocks`
-  coverage 92%, all run locally on macOS. CI didn't run on 0e008fb: GitHub refused to start the
-  jobs (account billing / spending limit). Re-run CI once that's sorted.
+  and its Scopes' signals to the UI.
 
-Left for M7 (the editor UI, `ui/blockeditor/`):
-- BD-01 + DS-10: the canvas (dot grid, 8 px snap, pan/zoom, rounded blocks with category
-  strips, typed port colors, orthogonal wires, live wire values on hover), drag/connect/
-  delete, quick-add palette on double-click, a parameter editor, undo/redo, grouping
-  (Ctrl+G), and errors as red outlines with an inline message.
-- Placement: a "Diagram" tab next to the 3D view in the central area (the Model preset is v1).
-- BD-08 in the app: each Scope's plot docked into the plot panel when a scene loads.
-- Design tokens: category and port-type colors (checked for contrast in both themes).
+Editor (`simview/ui/blockeditor/`):
+- `document.py`: the edited diagram, the shown subsystem level, undo / redo as JSON snapshots,
+  and a re-check after every edit against a stand-in for the scene's entities (D-083, D-084).
+- `canvas.py`: the §7.7 canvas: dot grid with 8 px snap, rounded blocks with a semibold title
+  and a category strip, ports colored by signal type, orthogonal wires with rounded corners,
+  live values on wire hover, red outlines with the message under the block, pan / zoom / fit,
+  drag-to-connect, rubber-band selection (D-086, D-087).
+- `palette.py`: quick-add on double-click, searching the library in §7.7 category order.
+- `params.py`: name and parameters of the selected block, its problems, one undo step per edit.
+- `editor.py`: toolbar (New, Open, Save, Undo, Redo, Group, Ungroup, Up, Fit), breadcrumbs,
+  problem count, shortcuts.
+- In the window: "3D View" / "Diagram" pages switched from the toolbar (D-082); the scene's
+  diagram opens when it loads; each Scope block's plot is docked in the plot panel (BD-08);
+  saving a diagram the scene runs reloads it (D-085); projects keep the open diagram.
+- New tokens: category and port colors (≥ 3:1 in both themes, tested) and the canvas sizes.
+  New QSS: error labels, mono line edits, the checked state of toolbar buttons.
+
+- Done-when ✅: `examples/drone_altitude/` runs the same PID as a script and as a diagram; the
+  flights match within 1e-9 (exactly; `tests/blocks/test_pid_match.py`). Vertical drone
+  dynamics stand in for the M8 quadrotor (D-081). In the app, `blocks.py` opens the diagram,
+  docks the `altitude.altitude` Scope (target and altitude), and hovering the PID's output wire
+  shows its value at the timeline cursor (`tests/ui/test_blockeditor.py`).
+- Requirement IDs: BD-01 ✅ BD-02 ✅ BD-03 ✅ BD-04 ✅ BD-05 ✅ BD-06 ✅ BD-07 ✅ BD-08 ✅
+  DS-10 ✅ (tests for the canvas, problems, quick-add, parameters, subsystems, contrast; the
+  look is a manual check below).
+- 383 tests (22 new in `tests/ui/test_blockeditor.py`, 17 in `tests/blocks/` from part 1),
+  lint clean with ruff 0.17.5, run locally on Windows (Python 3.13); `core` + `blocks` +
+  `ui/blockeditor` coverage 88%. Under coverage, the M5 plot redraw timing test misses its
+  33.3 ms bound by 0.4 ms on this machine (it passes without coverage; unrelated to M7).
+  CI hasn't run on the M7 commits yet: GitHub refused to start the jobs (account billing /
+  spending limit). Re-run CI once that's sorted.
+- No new dependencies.
+
+### Manual checks (visual, §0 rule 5)
+
+Checked from offscreen renders of the whole window in both themes, with the drone scene
+loaded and run for 3 s: the canvas (dot grid, category strips, semibold titles, port colors,
+rounded orthogonal wires, the selected PID's accent outline), the parameter panel, the docked
+Scope plot, and the toolbar's page switch. Problems (missing entity, unconnected inputs) show
+as red outlines with the message under each block. Not checked by eye: dragging, the
+quick-add popup, and the wire-hover tooltip on a real display (all three are tested).
 
 ## Next
 
-1. Build the M7 editor UI (list above), then the M7 summary and approval.
+1. Owner approval of M7, then M8 (PRD §10).

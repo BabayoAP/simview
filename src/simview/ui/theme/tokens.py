@@ -172,3 +172,58 @@ WORKSPACE_PREVIEW_CHARS: Final = 60  # value preview length in the workspace bro
 WORKSPACE_VALUE_WIDTH: Final = 96  # px, starting width of the Value column (resizable)
 ARRAY_VIEWER_SIZE: Final = (640, 420)
 ARRAY_VIEWER_MAX_CELLS: Final = 1_000_000  # bigger arrays show their first rows
+
+# Block editor (§7.7, DS-10). Category strips and port colors are >= 3:1 on bg.panel and
+# bg.elevated (WCAG 1.4.11, tested). "Subsystem" colors subsystem blocks (no library category).
+BLOCK_CATEGORY_COLORS: Final[dict[ThemeName, dict[str, str]]] = {
+    "dark": {
+        "Sources": "#32D74B",
+        "Math": "#5E9EFF",
+        "Continuous": "#BF5AF2",
+        "Discrete": "#FF9F0A",
+        "Control": "#FF6482",
+        "Sinks": "#64D2FF",
+        "Entities": "#FFD60A",
+        "Python": "#AC8E68",
+        "Subsystem": "#A1A1A6",
+    },
+    "light": {
+        "Sources": "#248A3D",
+        "Math": "#2E6BD6",
+        "Continuous": "#8944AB",
+        "Discrete": "#C93400",
+        "Control": "#D30F45",
+        "Sinks": "#0071A4",
+        "Entities": "#946200",
+        "Python": "#7F6545",
+        "Subsystem": "#6E6E73",
+    },
+}
+# Port colors by signal type (D-077: no bus type in the MVP). A port whose shape isn't known
+# yet (the diagram doesn't compile) is drawn hollow in the scalar color.
+PORT_COLORS: Final[dict[ThemeName, dict[str, str]]] = {
+    "dark": {"scalar": "#A1A1A6", "vector": "#64D2FF", "matrix": "#FF9F0A"},
+    "light": {"scalar": "#6E6E73", "vector": "#0071A4", "matrix": "#C93400"},
+}
+GRID_SNAP: Final = 8  # px, block positions snap to it
+GRID_DOT_SPACING: Final = 16  # px between grid dots (every second snap point)
+GRID_DOT_SIZE: Final = 1.5  # px
+BLOCK_WIDTH: Final = 128  # px
+BLOCK_HEADER: Final = 24  # px, the title row
+BLOCK_PORT_PITCH: Final = 20  # px between ports
+BLOCK_PAD: Final = 6  # px below the last port
+BLOCK_RADIUS: Final = 6  # px (§7.7)
+BLOCK_STRIP: Final = 4  # px, the category strip on the left edge
+BLOCK_SELECT_WIDTH: Final = 2  # px, outline of a selected block
+PORT_RADIUS: Final = 5  # px
+WIRE_WIDTH: Final = 1.5  # px
+WIRE_HOVER_WIDTH: Final = 2.5  # px
+WIRE_HIT_WIDTH: Final = 10  # px, how close the mouse must be to hover or pick a wire
+WIRE_RADIUS: Final = 6  # px, rounded corners
+WIRE_STUB: Final = 16  # px, straight run out of an output / into an input
+ERROR_OUTLINE: Final = 2  # px, red outline of a block with a problem
+ERROR_TEXT_WIDTH: Final = 220  # px, the inline message under it
+CANVAS_ZOOM: Final = (0.25, 4.0)  # min, max
+CANVAS_ZOOM_STEP: Final = 1.15  # per wheel notch
+PARAM_PANEL_WIDTH: Final = 240  # px
+QUICK_ADD_SIZE: Final = (300, 340)  # px
