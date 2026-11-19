@@ -190,7 +190,7 @@ def test_debug_draws(scene_view):
     vp.set_draws(draws)
     # batched: lines (incl. the frame axes, same width), arrows, points, labels
     assert len(vp.draw_actors) == 4
-    assert vp.draw_actors[0].mapper.GetInput().GetNumberOfCells() == 1 + 3
+    assert vp.draw_actors[0].mapper.dataset.n_cells == 1 + 3  # one line + the 3 frame axes
     vp.set_draws([])
     assert vp.draw_actors == []
 
