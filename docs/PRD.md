@@ -1,13 +1,16 @@
 # SimView — Product Requirements Document
 
-**Version:** 1.1 · **Status:** Ready to build · **Owner:** Harrison
+**Version:** 1.2 · **Status:** Ready to build · **Owner:** Harrison
 
-**Changes in 1.1 (2026-11-18, approved by the owner):** added §5.10 Robotics depth (RB), the
-robotics functionality of the Alloy physics engine (Argon Robotics, Apache-2.0,
-`github.com/argonrobotics-ai/alloy`) rebuilt natively on SimView's MuJoCo backend. Alloy itself is not a
-dependency: it doesn't run on Windows and pins its own MuJoCo. Its other features are listed as
-`[Future]` candidates. Added milestone **M3b: Robotics depth** before M4, which also finishes TB-ROBOT.
-Updated §8.3, §8.4, §9, §10, and §12 to match.
+**Changes in 1.1 (2026-11-18, approved by the owner):** added §5.10 Robotics depth (RB) and milestone
+**M3b: Robotics depth** before M4, which also finishes TB-ROBOT. Updated §8.3, §8.4, §9, §10, and §12.
+
+**Changes in 1.2 (2026-11-18, approved by the owner):** a correction. 1.1 described §5.10 as "the
+robotics functionality of Alloy" and took that to be Argon Robotics' Alloy physics engine. The owner
+meant **Alloy Robotics (usealloy.ai)**, an AI platform for investigating robot data. §5.10 keeps its
+requirements as plain robotics depth, with no Alloy framing; 1.1's `[Future]` physics-engine list
+(RB-20–RB-28) is removed. New §5.11 Run investigation (RI) brings usealloy.ai's functionality to
+SimView's own run logs, with milestone **M5b: Run investigation** after M5 (see DECISIONS D-037).
 
 ---
 
@@ -279,9 +282,9 @@ Tag meanings:
 
 ### 5.10 Robotics depth (RB)
 
-The robotics functionality of Alloy (see the 1.1 note at the top), rebuilt on SimView's MuJoCo backend
-so it runs on all three operating systems. Alloy's names and units are followed where they don't clash
-with SimView's (sizes are full edge lengths in metres, angles in radians).
+Deeper robotics on SimView's MuJoCo backend: robots and objects in one world, servos and targets,
+controllers, dynamics, trajectories, and a robot library. Sizes are full edge lengths in metres and
+angles are in radians.
 
 | ID | Requirement | Tag |
 |---|---|---|
@@ -297,15 +300,26 @@ with SimView's (sizes are full edge lengths in metres, angles in radians).
 | RB-10 | Transform tree: list a robot's frames, their parent tree, and the transform between any two frames. | MVP |
 | RB-11 | Robot library: robots from MuJoCo Menagerie (at least Franka Panda with hand, UR10e, Robotiq 2F-85) are downloaded on first use at a pinned commit into a user cache, with each robot's license kept beside it, and load by name (`add_robot("panda")`). | MVP |
 | RB-12 | Grasping by friction: a gripper closes on an object and lifts it, with friction set per object. | MVP |
-| RB-20 | Parallel worlds and per-world randomization of starts, poses, and gains (domain randomization). | Future |
-| RB-21 | Deformables: cloth and soft bodies. | Future |
-| RB-22 | Liquids (SPH) and granular material (MPM). | Future |
-| RB-23 | Rods and cables that bend, twist, and yield; objects that cut or tear; joints with yielding springs; heat. | Future |
-| RB-24 | Object library with physical property cards (e.g. YCB / Google Scanned Objects) and text-to-scene composition. | Future |
-| RB-25 | Simulation health checks (penetration, NaN, energy) with a report. | Future |
-| RB-26 | System identification from recorded robot data. | Future |
-| RB-27 | Imitation-learning demonstration recording (HDF5) and LeRobot datasets. | Future |
-| RB-28 | USD import, an MCP server, Isaac Lab bridges, and humanoid / quadruped locomotion examples. | Future |
+
+### 5.11 Run investigation (RI)
+
+The functionality of Alloy Robotics (usealloy.ai), an AI platform for finding out why a robot
+failed, applied to SimView's runs. A run is a simulated run's Parquet log (SE-06) or an imported
+log of real robot data. Investigation works headless and from the UI.
+
+| ID | Requirement | Tag |
+|---|---|---|
+| RI-01 | Run catalog: every run in a project is indexed with its metadata (scene, seed, parameters, date, duration, source). Runs can be listed, filtered, and opened. | MVP |
+| RI-02 | Scenarios: define a pattern once, as a condition over signals that must hold for a minimum time (an expression such as `ur5.elbow_joint.v > 2.0 for 0.05 s`, or a Python predicate), and scan every past run for it. New runs are scanned when they finish. A match is a time window in a run. | MVP |
+| RI-03 | Traceable findings: every match and report claim names its run, signals, and time window. Clicking one moves the timeline, viewport, and plots to that window. When a run lacks a signal a scenario needs, it says so instead of reporting no match. | MVP |
+| RI-04 | Run reports: an automatically generated debrief for a run or a set of runs (summary statistics, scenario matches, and plots of the signals involved), exported as a self-contained HTML file. | MVP |
+| RI-05 | Run comparison: compare a run with a baseline run: per-signal differences, the first time they diverge beyond a tolerance, and scenario matches found in only one of them. | MVP |
+| RI-06 | Import real robot logs as runs: CSV and Parquet, with a column mapping onto entity states, so they can be scanned, reported on, and replayed in the viewport. | MVP |
+| RI-20 | Natural-language questions about runs ("why did the arm stop at 12 s?"), answered with linked evidence. | Future |
+| RI-21 | An MCP server so AI assistants (Claude, Cursor, Codex) can query runs, scenarios, and reports. | Future |
+| RI-22 | Always-on background investigations across many runs in parallel. | Future |
+| RI-23 | Import MCAP, ROS 1/2 bags, and ArduPilot logs (with IO-03), and schema changes between log versions. | v1 |
+| RI-24 | Integrations (Slack, Jira, GitHub) and fleet data sources (S3, cloud storage, an edge upload agent). | Future |
 
 ---
 
@@ -668,6 +682,7 @@ Stop for review after each one.
 | 4 | **M3b: Robotics depth** | One shared MuJoCo world per scene, scene objects, robot placement and mounting, servos and targets, `scene.controller`, joint PID / impedance, differential IK and operational-space control, dynamics, trajectories, transform tree, Menagerie robot library, friction grasping. | RB-01–RB-12, TB-ROBOT (rest) | A Panda (or a scripted gripper) picks up a cube and lifts it 10 cm under differential-IK control. Operational-space control tracks a task-space step to within 1 mm. Inverse dynamics matches MuJoCo's forward dynamics within 1e-6. All M3 tests still pass. |
 | 4–5 | **M4: Viewport + IPC** | Sim process, shared memory/ZMQ, PyVista viewport, camera controls, trails, selection, debug draw, gizmo, 2D mode. | SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06 | The UC-3 IK drag demo works live. Killing the sim process doesn't crash the UI. |
 | 6 | **M5: Timeline + plots** | Timeline playback and scrubbing, pyqtgraph panel, signal tree, synced cursor, XY/scatter/histogram plots, exports. | VP-05, DA-01–DA-04, DA-07, DS-09 | Scrubbing moves the viewport and plot cursor together within 100 ms. |
+| 6–7 | **M5b: Run investigation** | Run catalog, scenarios with scanning of past and new runs, traceable findings that jump the timeline, HTML run reports, run comparison, CSV/Parquet log import. | RI-01–RI-06 | A scenario defined once finds every injected event across 20 runs with no misses and no false matches. A report for the UC-3 pick run exports with its plots. Clicking a finding moves the timeline to it within 100 ms. An imported CSV log replays in the viewport. |
 | 7 | **M6: Console + workspace** | IPython console, editor, workspace browser, live parameter tweaking, CSV/.mat import, project save/load. | SC-01–SC-05, IO-02, IO-04 | `sim.params` changes take effect on the next tick. A project round-trips save→load. |
 | 8–9 | **M7: Block editor** | Canvas, core block library, Python Function block, entity blocks, compiler with algebraic-loop detection, subsystems, Scope docking, JSON save. | BD-01–BD-08, DS-10 | A PID block diagram controlling a quadrotor's altitude matches the same controller written as a script within 1e-9. |
 | 10 | **M8: Sensors + Aero/Vehicles toolboxes** | IMU, GPS, seeker, camera, lidar. Quadrotor, PN, EKF, bicycle model, pure pursuit. Point clouds and covariance ellipsoids. | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH | The UC-1 and UC-2 templates run end to end. |

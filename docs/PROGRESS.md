@@ -9,7 +9,10 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M2: Core sim engine | ✅ Merged to `main` 2026-11-18 | `main` | SE-01, SE-04, SE-05, SE-06, SE-07, SC-04 (+ NF-06, NF-09) |
 | M3: Physics + robots | ✅ Approved 2026-11-18 | `main` | SE-03, IO-01, TB-ROBOT (partial, D-023) |
 | M3b: Robotics depth (PRD 1.1) | ✅ Approved 2026-11-18 | `main` | RB-01–RB-12, TB-ROBOT (rest) |
-| M4–M10 | Not started | | see PRD §10 |
+| M4: Viewport + IPC | In progress | `m4-viewport-ipc` | SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06 |
+| M5: Timeline + plots | Not started | | VP-05, DA-01–DA-04, DA-07, DS-09 |
+| M5b: Run investigation (PRD 1.2) | Not started | | RI-01–RI-06 |
+| M6–M10 | Not started | | see PRD §10 |
 
 ## M1: Skeleton + design system
 
@@ -55,8 +58,8 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 
 ## M3b: Robotics depth
 
-Added by PRD 1.1 (2026-11-18): Alloy's robotics functionality, rebuilt natively on SimView's
-MuJoCo backend (D-025), plus the rest of TB-ROBOT.
+Added by PRD 1.1 (2026-11-18): deeper robotics on SimView's MuJoCo backend, plus the rest of
+TB-ROBOT. (1.1 credited this to the wrong "Alloy"; corrected in PRD 1.2, D-037.)
 
 - `physics/world.py`: one shared MuJoCo world per scene; ground, boxes, spheres, cylinders,
   capsules (free or static); world options (integrator, friction cone). `Robot` moved into it

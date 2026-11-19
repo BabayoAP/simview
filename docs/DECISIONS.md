@@ -147,7 +147,8 @@ Jacobians. `pyproject.toml` turns off ruff's N803/N806 naming rules for
 
 ## M3b
 
-**D-025 — Alloy's robotics, rebuilt natively.** The owner asked (2026-11-18) for "all the
+**D-025 — Alloy's robotics, rebuilt natively.** *Superseded by D-037: this decision identified the
+wrong Alloy. The text below is kept as the record of what was decided at the time.* The owner asked (2026-11-18) for "all the
 necessary functionality of Alloy robotics", the Alloy physics engine from Argon Robotics
 (`github.com/argonrobotics-ai/alloy`, Apache-2.0). Alloy runs only on Linux and Apple-silicon
 macOS and pins `mujoco==3.17.0`, so it is not a dependency. Its rigid-body robotics is rebuilt on
@@ -189,8 +190,8 @@ made a servo-driven arm creep: a servo always lags its target, so each new targe
 step ahead. `DifferentialIK` keeps `q_cmd`, starts from the measured q on its first call or after
 `reset()`, and takes each step from the previous command, as position-controlled arms do.
 
-**D-031 — Objects.** Sizes are full lengths in metres (Alloy's convention; MuJoCo's half sizes are
-derived): box (x, y, z), sphere (diameter), cylinder and capsule (diameter, length). A free
+**D-031 — Objects.** Sizes are full lengths in metres (easier to read than MuJoCo's half sizes,
+which are derived): box (x, y, z), sphere (diameter), cylinder and capsule (diameter, length). A free
 object needs `mass=` and is an entity with 13 logged states (`x y z qw qx qy qz vx vy vz wx wy
 wz`). `static=True` makes fixed geometry that is not an entity. One ground plane per scene.
 
@@ -229,3 +230,21 @@ shoulder make its light wrist (about 1e-4 kg·m²) unstable under 1 ms torque co
 controller tests scale gains by inertia (kp = ω²·M_ii, kd = 2ω·M_ii); `OperationalSpace` scales
 by the mass matrix itself. `mujoco>=3.3` (for `MjSpec.attach`); `mj_fullM` changed signature in
 MuJoCo 4 and both forms are handled. Development used MuJoCo 4.0.1; CI installs the latest release.
+
+## PRD 1.2
+
+**D-037 — "Alloy robotics" is Alloy Robotics (usealloy.ai), not Argon's Alloy engine.** D-025 took
+"all the necessary functionality of Alloy robotics" to mean the Alloy physics engine from Argon
+Robotics, the first match a web search returned, and PRD 1.1 framed §5.10 and M3b around it. The
+owner meant Alloy Robotics (usealloy.ai), an AI platform for investigating robot data: it ingests
+logs (MCAP, ROS, Parquet, CSV, ArduPilot), answers questions about missions, scans every run for
+a pattern defined once ("Scenarios"), writes mission reports with plots, links each finding to its
+signals and time window, and offers an MCP server. It has no simulation. The owner's decisions
+(2026-11-18):
+- M3b stays, as plain "Robotics depth". Its code and requirements (RB-01..RB-12) are sound and
+  unchanged; only the Alloy framing is removed from the PRD and PROGRESS. 1.1's physics-engine
+  `[Future]` list (RB-20..RB-28) is removed.
+- usealloy.ai's functionality becomes PRD §5.11 Run investigation (RI-01..RI-06 MVP, RI-20..RI-24
+  later), applied to SimView's own runs and to imported robot logs, as milestone M5b after M5 (it
+  needs the timeline and plots). Natural-language Q&A and an MCP server are `[Future]` for now.
+- Lesson recorded: confirm a product's identity from its own site before building on it.
