@@ -52,7 +52,7 @@ def test_reader_skips_a_frame_being_written():
             np.zeros((3, 7)),
         )
         w.arr[SEQ] += 1  # simulate the writer mid-frame
-        assert w.read(retries=5) is None
+        assert w.read(timeout=0.005) is None  # waits out a write, then gives up
         w.arr[SEQ] += 1
         assert w.read().tick == 1
     finally:

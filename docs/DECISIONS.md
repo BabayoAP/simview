@@ -381,4 +381,7 @@ black panels (Inspector, Console) when Windows is in dark mode: the Qt palette n
 tokens too, and Qt no longer makes the docks native windows next to VTK's. (3) Sliders and tree
 selection used the OS accent color: both are styled from the tokens now. (4) pyqtgraph creates
 parentless menus per plot; plots adopt them so they are deleted with the plot (no leak), and the
-test teardown deletes plain stray widgets last.
+test teardown deletes plain stray widgets last. (5) The shared-memory reader gave up after 100
+quick retries, so a writer descheduled mid-frame (a busy 2-core CI machine) made `frame()` return
+None; it now yields and waits out a write for up to 20 ms. The GL scrub test checks timing only
+off CI: CI renders OpenGL in software (0.3–1.3 s a frame).

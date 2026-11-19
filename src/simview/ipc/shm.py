@@ -8,10 +8,13 @@ of seeing a half-written frame. Nothing here imports Qt or MuJoCo.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from multiprocessing import shared_memory
 
 import numpy as np
+
+READ_TIMEOUT = 0.02  # s a reader waits out a write in progress
 
 # Header slots
 SEQ, TICK, T, RTF, RUNNING, WALL, SPEED, N_HEADER = range(8)
@@ -110,17 +113,25 @@ class StateBuffer:
         a[SEQ] += 1  # even: done
 
     # -- reader (UI) ------------------------------------------------------------------------
-    def read(self, retries: int = 100) -> Frame | None:
-        """A consistent frame, or None if nothing was written yet (or the writer kept racing)."""
+    def read(self, timeout: float = READ_TIMEOUT) -> Frame | None:
+        """A consistent frame, or None if nothing was written yet (or the writer kept racing
+        for `timeout` seconds). Mid-write it yields, so a writer descheduled halfway through a
+        frame (a busy CI machine) gets to finish instead of the reader giving up at once."""
         a, off = self.arr, self.layout.offsets
-        for _ in range(retries):
+        deadline = time.monotonic() + timeout
+        while True:
             seq = a[SEQ]
             if seq == 0:
                 return None
             if int(seq) % 2:
+                if time.monotonic() > deadline:
+                    return None
+                time.sleep(0)
                 continue
             copy = a.copy()
             if a[SEQ] != seq:
+                if time.monotonic() > deadline:
+                    return None
                 continue
             states = {
                 n: copy[off[f"x:{n}"] : off[f"x:{n}"] + s]
