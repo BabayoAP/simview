@@ -203,3 +203,18 @@ def test_targets_bodies_and_draws(client, tmp_path):
     assert point[1][0] == pytest.approx((0.5, 0.2, 0.3))
     f = client.frame()
     np.testing.assert_allclose(f.states["box"][:3], [1.0, 2.0, 3.0 - 9.81 * 1e-6], atol=1e-4)
+
+
+def test_spawning_ignores_the_mains_file(client, tmp_path, monkeypatch):
+    """IPython's console puts its namespace in `__main__`, and `%run` leaves `__file__` there.
+    Spawning must not run that file again in the sim process (an M6 bug)."""
+    import sys
+
+    marker = tmp_path / "ran.txt"
+    script = tmp_path / "user_script.py"
+    script.write_text(f"open({str(marker)!r}, 'w').write('ran')\n")
+    monkeypatch.setattr(sys.modules["__main__"], "__file__", str(script), raising=False)
+    client.start(scene_file(tmp_path, BALL))
+    wait_for(client, proto.READY)
+    assert not marker.exists()
+    assert sys.modules["__main__"].__file__ == str(script)  # put back after spawning

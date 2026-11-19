@@ -12,7 +12,8 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M4: Viewport + IPC | ✅ Approved 2026-11-18 | `main` | SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06 |
 | M5: Timeline + plots | ✅ Approved 2026-11-19 | `main` | VP-05, DA-01–DA-04, DA-07, DS-09 |
 | M5b: Run investigation (PRD 1.2) | ✅ Approved 2026-11-19 | `main` | RI-01–RI-06 |
-| M6–M10 | Not started | | see PRD §10 |
+| M6: Console + workspace | Built, **awaiting approval** | `m6-console-workspace` | SC-01–SC-05, IO-02, IO-04 |
+| M7–M10 | Not started | | see PRD §10 |
 
 ## M1: Skeleton + design system
 
@@ -199,6 +200,43 @@ signal table with units). Not checked by me: the panel in the dark theme and ins
 window (the screen was locked by then, so window captures came back blank; the panel was
 captured on its own), the Import mapping dialog by hand, and a comparison report by eye (tested).
 
+## M6: Console + workspace
+
+- `simview/core/params.py`: live parameters. A scene declares `scene.params.kp = 2000.0`;
+  controllers read `ctx.params.kp`; scalars are logged as `params.<name>` (D-064, D-065).
+  New `"param"` command and `"params"` event between the UI and the sim process.
+- `simview/ui/console/`: the IPython console on an in-process kernel with `sim`, `sv`, and `np`
+  (`kernel.py`, `handle.py`, D-066, D-067), the editor (`editor.py`, D-068), and the workspace
+  browser with an array table viewer (`workspace.py`, D-069). Sim output and tracebacks now go
+  to the IPython console (the M4 text console is gone).
+- `simview/io/data.py` (CSV, .mat, D-071) and `simview/io/project.py` (`.svproj`, D-072);
+  File menu: New Project, Open Project, Save Project, Import Data.
+- Fixed along the way: a new sim process re-ran the last `%run` script (D-067).
+- `examples/ur5_ik_drag.py` declares `max_step` (the IK step size) as a live parameter.
+- Done-when:
+  - `sim.params` changes take effect on the next tick ✅ (tests: in the core, across the
+    process, and typed in the console: `sim.params.force = 4.0` while paused, one step, the
+    cart's velocity is exactly 4.0 · dt and the `params.force` column changes on that tick).
+  - A project round-trips save → load ✅ (test: scene + script + a run saved into a new
+    project, a new window opens it: same scene from `scenes/`, same script text, the run in
+    the Runs panel).
+- Requirement IDs: SC-01 ✅ SC-02 ✅ SC-03 ✅ SC-04 ✅ (from M2; the console's `sim.scene`
+  and the app build the same `Scene` from the file) SC-05 ✅ IO-02 ✅ IO-04 ✅.
+- New dependencies: `qtconsole`, `ipykernel`, `pygments` (all in PRD §8.1, D-063).
+- 348 tests (36 new); `simview/core` coverage stays above 90%.
+
+### Manual checks (visual, §0 rule 5)
+
+Checked from offscreen renders in both themes: the console (banner, prompts in the accent
+color, a sim traceback in the error color on its own line, JetBrains Mono), the editor (line
+numbers, highlighting, toolbar), and the workspace (Name / Value / Shape / Type). Not checked:
+the array table viewer and the Import / New Project file dialogs by eye (both tested), and the
+console on a real display alongside the 3D view.
+
 ## Next
 
-1. Start **M6: Console + workspace** (SC-01–SC-05, IO-02, IO-04).
+1. Owner reviews M6: `simview examples/ur5_ik_drag.py`, then in the console try
+   `sim.state("ur5")`, `sim.data("tool_error")`, `sim.scene["ur5"].fk(np.zeros(6))`, and
+   `sim.params.max_step = 0.002` while dragging the target (the arm follows slower);
+   File > New Project, Save, reopen it from the start screen; File > Import Data on a CSV.
+2. Start **M7: Block editor** (BD-01–BD-08, DS-10).

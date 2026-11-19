@@ -107,7 +107,7 @@ def test_killing_the_sim_keeps_the_ui_and_run_restarts(qapp, window):
     pump(qapp, lambda: loaded(window))
     window.run()
     window.client.proc.kill()
-    pump(qapp, lambda: "exited" in window.console.toPlainText())
+    pump(qapp, lambda: "exited" in window.console.text())
     assert window.isVisible() and not window.running
     window.run()
     pump(qapp, lambda: window.client.alive and window.client.frame() is not None)
@@ -132,8 +132,8 @@ def test_user_error_shows_a_traceback(qapp, window, tmp_path):
     window.load_scene(path)
     pump(qapp, lambda: window.client.frame() is not None)
     window.run()
-    pump(qapp, lambda: "ValueError: bad gain" in window.console.toPlainText())
-    assert "about to fail" in window.console.toPlainText()
+    pump(qapp, lambda: "ValueError: bad gain" in window.console.text())
+    assert "about to fail" in window.console.text()
     assert not window.running and window.client.alive
 
 

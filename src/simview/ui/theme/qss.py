@@ -103,6 +103,10 @@ QLabel[role="mono"] {{
     color: {c["text.secondary"]};
     font-size: {t.FONT_SIZE["secondary"]}px;
 }}
+QPlainTextEdit[role="code"], QTextEdit[role="code"] {{
+    font-family: "{t.FONT_MONO}";
+    font-size: {t.FONT_SIZE["secondary"]}px;
+}}
 QFrame#Card {{
     background: {c["bg.panel"]};
     border: {t.HAIRLINE}px solid {c["border.subtle"]};

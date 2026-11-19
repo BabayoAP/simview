@@ -1,4 +1,4 @@
-"""Panels that show a loaded scene: scene tree, inspector, console (VP-06, DS-06, NF-10).
+"""Panels that show a loaded scene: scene tree and inspector (VP-06, DS-06).
 
 Selection and hover are synced through `select` / `set_hover` and the `selected` / `hovered`
 signals, so the viewport, tree, inspector, signal tree, and plots always agree (DS-06).
@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import numpy as np
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
+from qtpy.QtGui import QColor, QFont
 from qtpy.QtWidgets import (
     QFormLayout,
     QLabel,
-    QPlainTextEdit,
     QScrollArea,
     QSlider,
     QTreeWidget,
@@ -167,27 +166,6 @@ class Inspector(QScrollArea):
             if state in self.sliders:
                 wrapped = (v + np.pi) % (2 * np.pi) - np.pi
                 self.sliders[state].setValue(int(wrapped * SLIDER_RESOLUTION))
-
-
-class Console(QPlainTextEdit):
-    """NF-10: print output and tracebacks from the sim process."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setReadOnly(True)
-        mono = QFont(tokens.FONT_MONO)
-        mono.setPixelSize(tokens.FONT_SIZE["secondary"])
-        self.setFont(mono)
-        self.setPlaceholderText("Output from the simulation appears here.")
-
-    def write(self, text: str, token: str = "text.primary") -> None:
-        fmt = QTextCharFormat()
-        fmt.setForeground(QColor(tokens.color(theme.current_theme(), token)))
-        cursor = self.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.insertText(text, fmt)
-        self.setTextCursor(cursor)
-        self.ensureCursorVisible()
 
 
 class NoViewport(QWidget):

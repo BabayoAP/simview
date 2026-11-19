@@ -54,7 +54,7 @@ class Controller:
     def open_project(self, path: str) -> None:
         add_recent_project(self.settings, path)
         self.start.refresh_recent()
-        self.open_window(path, Path(path).name)
+        self.open_window(path, Path(path).name).open_project(path)
 
     def open_window(self, project_key: str, title: str) -> MainWindow:
         if self.window is not None:

@@ -26,6 +26,8 @@ class Sim:
         self.rng: np.random.Generator = make_rng(scene.seed)
         self.tick = 0
         self.draw = DrawList()  # VP-07: shown by the viewport, recorded headless too
+        self.params = scene.params  # SC-05: changes take effect on the next tick
+        self.params.freeze()
         for e in scene.entities.values():
             e.reset()
             e.validate()

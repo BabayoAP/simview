@@ -43,6 +43,31 @@ COLORS: Final[dict[ThemeName, dict[str, str]]] = {
     },
 }
 
+# Code colors (SC-01, SC-02: editor and console), each >= 4.5:1 on bg.panel and bg.elevated.
+# Plain code uses text.primary.
+SYNTAX: Final[dict[ThemeName, dict[str, str]]] = {
+    "dark": {
+        "keyword": "#FF7AB2",
+        "string": "#FC6A5D",
+        "number": "#D9C97C",
+        "comment": "#8E9AA6",
+        "function": "#67B7FF",
+        "class": "#5DD8FF",
+        "builtin": "#B78CF2",
+        "decorator": "#FD8F3F",
+    },
+    "light": {
+        "keyword": "#AD3DA4",
+        "string": "#C41A16",
+        "number": "#1C00CF",
+        "comment": "#5D6C79",
+        "function": "#0F68A0",
+        "class": "#0B4F79",
+        "builtin": "#6C36A9",
+        "decorator": "#8A4500",
+    },
+}
+
 # Fixed engineering conventions (do not change).
 AXIS_COLORS: Final[dict[str, str]] = {"x": "#FF0000", "y": "#00FF00", "z": "#0000FF"}
 OKABE_ITO: Final[tuple[str, ...]] = (
@@ -138,3 +163,12 @@ MOTION_PANEL: Final = 250
 def color(theme: ThemeName, token: str) -> str:
     """Return the hex value of a semantic color token."""
     return COLORS[theme][token]
+
+
+# Console, editor, and workspace (SC-01-SC-03).
+EDITOR_TAB_SPACES: Final = 4
+EDITOR_GUTTER_PAD: Final = 8  # px either side of the line numbers
+WORKSPACE_PREVIEW_CHARS: Final = 60  # value preview length in the workspace browser
+WORKSPACE_VALUE_WIDTH: Final = 96  # px, starting width of the Value column (resizable)
+ARRAY_VIEWER_SIZE: Final = (640, 420)
+ARRAY_VIEWER_MAX_CELLS: Final = 1_000_000  # bigger arrays show their first rows

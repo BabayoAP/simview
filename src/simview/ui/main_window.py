@@ -30,11 +30,15 @@ from qtpy.QtWidgets import (
 from simview.ui import theme
 from simview.ui.actions import ActionRegistry
 from simview.ui.command_palette import CommandPalette
+from simview.ui.console.editor import EditorPanel
+from simview.ui.console.handle import SimHandle
+from simview.ui.console.kernel import ConsoleWidget
+from simview.ui.console.workspace import ArrayViewer, WorkspaceBrowser
 from simview.ui.panels import EmptyState
 from simview.ui.plots.panel import PlotPanel
 from simview.ui.plots.signals import SignalTree
 from simview.ui.runs_panel import RunsPanel
-from simview.ui.sim_panels import Console, Inspector, NoViewport, SceneTree
+from simview.ui.sim_panels import Inspector, NoViewport, SceneTree
 from simview.ui.theme import icon, tokens
 from simview.ui.timeline.history import History
 from simview.ui.timeline.playback import Playback
@@ -96,7 +100,12 @@ class MainWindow(QMainWindow):
         self.sim_view: Any = None  # Viewport, or NoViewport without OpenGL
         self.scene_tree: SceneTree | None = None
         self.inspector: Inspector | None = None
-        self.console: Console | None = None
+        self.project: Any = None  # simview.io.project.Project, once one is open (IO-04)
+        self.console = ConsoleWidget()  # SC-01, works without a scene
+        self.editor = EditorPanel()  # SC-02
+        self.workspace = WorkspaceBrowser()  # SC-03
+        self.sim_handle = SimHandle(self)  # `sim` in the console (SC-05)
+        self.array_viewers: list[ArrayViewer] = []
         self.signal_tree: SignalTree | None = None
         self.runs: RunsPanel | None = None
         self.opened_run: Any = None  # RunInfo shown on the timeline, or None for the live sim
@@ -118,6 +127,7 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self._tick)
 
         self._register_actions()
+        self._connect_console()
         self._build_menu()
         self._build_toolbar()
         self._build_central()
@@ -131,7 +141,10 @@ class MainWindow(QMainWindow):
         reg = self.actions_.register
         reg("palette.open", "Command Palette…", self.palette_.open, "Ctrl+K", "View")
         reg("file.new", "New Empty Scene", self._new_scene, QKeySequence.StandardKey.New, "File")
+        reg("file.new_project", "New Project…", self.new_project_dialog, None, "File")
         reg("file.open", "Open Project…", self._open_project, QKeySequence.StandardKey.Open, "File")
+        reg("file.save", "Save Project", self.save, QKeySequence.StandardKey.Save, "File")
+        reg("file.import_data", "Import Data (CSV, .mat)…", self.import_data_dialog, None, "File")
         reg("file.start", "Show Start Screen", self.show_start_screen.emit, None, "File")
         reg("file.open_scene", "Open Scene…", self._open_scene_dialog, "Ctrl+Shift+O", "File")
         reg("sim.run", "Run", self.run, None, "Simulation")
@@ -167,7 +180,7 @@ class MainWindow(QMainWindow):
     def _open_project(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Open Project (.svproj)")
         if path:
-            self.statusBar().showMessage(f"Opened {path}", 3000)
+            self.open_project(path)
 
     def toggle_theme(self) -> None:
         new = "light" if theme.current_theme() == "dark" else "dark"
@@ -179,6 +192,8 @@ class MainWindow(QMainWindow):
             self.sim_view.set_theme(new)
         if self.plots is not None:
             self.plots.set_theme(new)
+        self.console.set_theme(new)
+        self.editor.set_theme(new)
 
     # ----- chrome --------------------------------------------------------------------
     def _build_menu(self) -> None:
@@ -201,7 +216,15 @@ class MainWindow(QMainWindow):
         project.setText("Project")
         project.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         menu = QMenu(project)
-        for aid in ("file.new", "file.open_scene", "file.open", "file.start"):
+        for aid in (
+            "file.new",
+            "file.open_scene",
+            "file.new_project",
+            "file.open",
+            "file.save",
+            "file.import_data",
+            "file.start",
+        ):
             menu.addAction(self.actions_.get(aid))
         project.setMenu(menu)
         tb.addWidget(project)
@@ -279,12 +302,6 @@ class MainWindow(QMainWindow):
                 "Show Scene Tree",
                 a("view.focus.scene_tree").trigger,
             ),
-            "workspace": (
-                "table",
-                "Console variables appear here.",
-                "Show Console",
-                a("view.focus.console").trigger,
-            ),
             "timeline": (
                 "clock-3",
                 "Run a simulation to scrub through time.",
@@ -309,25 +326,22 @@ class MainWindow(QMainWindow):
             return EmptyState("clock-3", hint, "Run", a("sim.run").trigger, compact=True)
         if name == "console":
             tabs = QTabWidget()
-            tabs.addTab(
-                EmptyState(
-                    "terminal",
-                    "The console isn't connected yet.",
-                    "Command Palette…",
-                    self.palette_.open,
-                ),
-                "Console",
-            )
-            tabs.addTab(
-                EmptyState(
-                    "file-plus",
-                    "Open a script to edit it.",
-                    "Open Project…",
-                    a("file.open").trigger,
-                ),
-                "Editor",
-            )
+            tabs.setObjectName("ConsoleTabs")
+            tabs.addTab(self.console, "Console")
+            tabs.addTab(self.editor, "Editor")
+            self.console_tabs = tabs
             return tabs
+        if name == "workspace":
+            self.workspace_stack = QStackedWidget()
+            self.workspace_empty = EmptyState(
+                "table",
+                "Console variables appear here.",
+                "Import Data…",
+                a("file.import_data").trigger,
+            )
+            self.workspace_stack.addWidget(self.workspace_empty)
+            self.workspace_stack.addWidget(self.workspace)
+            return self.workspace_stack
         return EmptyState(*content[name])
 
     def _build_docks(self) -> None:
@@ -420,7 +434,10 @@ class MainWindow(QMainWindow):
 
         self.close_scene()
         self.scene_path = Path(path)
-        self.setWindowTitle(f"SimView — {self.scene_path.name}")
+        title = self.scene_path.name
+        if self.project is not None:
+            title = f"{self.project.name} — {title}"
+        self.setWindowTitle(f"SimView — {title}")
         self._ensure_scene_panels()
         self.client = SimClient()
         self.client.start(self.scene_path)
@@ -459,7 +476,6 @@ class MainWindow(QMainWindow):
         self.viewport = self.sim_view
         self.scene_tree = SceneTree()
         self.inspector = Inspector()
-        self.console = Console()
         a = self.actions_.get
         self.timeline = Timeline(
             {
@@ -489,11 +505,6 @@ class MainWindow(QMainWindow):
         self.plots.seek_time.connect(self.seek_time)
         self.plots.hover_time.connect(self._plot_hover)
         self.plots.export_data.connect(self.export_data_dialog)
-        tabs = self.docks["console"].widget()
-        if isinstance(tabs, QTabWidget):
-            tabs.removeTab(0)
-            tabs.insertTab(0, self.console, "Console")
-            tabs.setCurrentIndex(0)
         # DS-06: one selection and one hover, shown everywhere.
         tree, view = self.scene_tree, self.sim_view
         view.selected.connect(self._select)
@@ -549,12 +560,12 @@ class MainWindow(QMainWindow):
                 self._live_draws = ev["draws"]  # the newest set (draws can change every tick)
                 if self.history is not None:
                     self.history.add_draws(ev["tick"], ev["draws"])
+            elif kind == proto.PARAMS:
+                self.sim_handle.params_changed(ev["values"])
             elif kind == proto.LOG:
-                assert self.console is not None
                 token = "state.error" if ev["stream"] == "stderr" else "text.primary"
                 self.console.write(ev["text"], token)
             elif kind == proto.ERROR:
-                assert self.console is not None
                 self.playback.sim_stopped()
                 self.console.write(ev["traceback"], "state.error")
                 self._focus_dock("console")()
@@ -641,6 +652,7 @@ class MainWindow(QMainWindow):
             self.signal_tree.load(layout)
             self.plots.set_history(self.history)
         self.dt_label.setText(f"dt {desc.dt * 1e3:g} ms")
+        self.sim_handle.loaded(desc.params)
         self.client.set_speed(float(self.speed_box.currentData()))
         self.statusBar().showMessage(f"{self.scene_path.name} loaded.", 3000)
         if self.playback.sim_running:
@@ -652,7 +664,6 @@ class MainWindow(QMainWindow):
 
     def _on_stopped(self, code: int | None) -> None:
         """NF-10: the sim process died; the UI stays up and Run starts a new one."""
-        assert self.console is not None
         self.playback.sim_stopped()
         if code not in (0, None):
             msg = f"The sim process exited (code {code}). Run restarts it."
@@ -726,11 +737,140 @@ class MainWindow(QMainWindow):
             self.save_live_run()
             self.client.reset()
 
+    # ----- console, editor, workspace (SC-01-SC-03, SC-05, IO-02) -------------------
+    def _connect_console(self) -> None:
+        self.console.push({"sim": self.sim_handle}, hidden=True)
+        self.console.executed.connect(self.refresh_workspace)
+        self.editor.run_code.connect(self._run_in_console)
+        self.editor.run_file.connect(lambda path: self._run_in_console(f"%run -i {path!r}"))
+        self.workspace.open_array.connect(self.open_array)
+
+    def _run_in_console(self, code: str) -> None:
+        self.console_tabs.setCurrentWidget(self.console)
+        self.console.run_code(code)
+
+    def refresh_workspace(self) -> None:
+        self.workspace.refresh(self.console.namespace, self.console.hidden)
+        has_vars = bool(self.workspace.values)
+        self.workspace_stack.setCurrentWidget(self.workspace if has_vars else self.workspace_empty)
+
+    def open_array(self, name: str) -> ArrayViewer:
+        """SC-03: a NumPy variable in a table viewer."""
+        viewer = ArrayViewer(name, self.workspace.values[name], self)
+        self.array_viewers = [v for v in self.array_viewers if v.isVisible()] + [viewer]
+        viewer.show()
+        return viewer
+
+    def import_data_dialog(self) -> None:
+        start = str(self.project.path) if self.project is not None else ""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Data", start, "Data files (*.csv *.mat);;All files (*)"
+        )
+        if path:
+            self.import_data(path)
+
+    def import_data(self, path: str | Path) -> list[str]:
+        """IO-02: a CSV file (one record array named after the file) or a .mat file's
+        variables, into the console's workspace."""
+        from simview.io.data import load_data
+
+        try:
+            values = load_data(path)
+        except Exception as exc:  # noqa: BLE001 - a bad file is a message, not a crash
+            self.statusBar().showMessage(f"Couldn't import {Path(path).name}: {exc}", 6000)
+            return []
+        self.console.push(values)
+        names = ", ".join(values) or "nothing"
+        self.console.write(f"Imported {Path(path).name}: {names}\n", "text.secondary")
+        self._focus_dock("workspace")()
+        self.statusBar().showMessage(f"Imported {names} from {Path(path).name}", 4000)
+        return list(values)
+
+    # ----- projects (IO-04) ----------------------------------------------------------
+    def new_project_dialog(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(self, "New Project", "", "SimView project (*.svproj)")
+        if path:
+            self.new_project(path)
+
+    def new_project(self, path: str | Path) -> Any:
+        """Create a project folder and save what's open into it (scene, script)."""
+        from simview.io import project as proj
+
+        try:
+            p = proj.create(path)
+        except proj.ProjectError as exc:
+            self.statusBar().showMessage(str(exc), 6000)
+            return None
+        self._set_project(p)
+        self.save_project()
+        return p
+
+    def open_project(self, path: str | Path) -> Any:
+        """Open a project: its scene (and its run folder), and its script in the editor."""
+        from simview.io import project as proj
+        from simview.ui.start_screen import add_recent_project
+
+        try:
+            p = proj.load(path)
+        except proj.ProjectError as exc:
+            self.statusBar().showMessage(str(exc), 6000)
+            return None
+        self._set_project(p)
+        add_recent_project(self.settings, str(p.path))
+        script = p.script_path
+        if script is not None and script.is_file():
+            self.editor.open(script)
+        scene = p.scene_path
+        if scene is not None and scene.is_file():
+            self.load_scene(scene)
+        self.statusBar().showMessage(f"Opened project {p.name}", 3000)
+        return p
+
+    def _set_project(self, p: Any) -> None:
+        self.project = p
+        self.setWindowTitle(f"SimView — {p.name}")
+        if self.runs is not None:
+            self.runs.set_folder(self.runs_folder())
+
+    def save(self) -> None:
+        """Ctrl+S: save the project. With no project open, save the editor's script if it has
+        one (or unsaved text); with nothing to save, offer a new project."""
+        ed = self.editor
+        if self.project is not None:
+            self.save_project()
+        elif ed.path is not None or ed.editor.document().isModified():
+            ed.save()
+        else:
+            self.new_project_dialog()
+
+    def save_project(self) -> Path | None:
+        """Write the project: the open scene and script are kept in its folders (copied in
+        if they came from elsewhere), and `project.json` names them. Runs are written to
+        its `runs/` when they stop (RI-01)."""
+        p = self.project
+        if p is None:
+            return None
+        ed = self.editor
+        if ed.path is not None or ed.editor.toPlainText().strip():
+            if ed.path is None or p.relative(ed.path) is None:
+                name = ed.path.name if ed.path is not None else "script.py"
+                ed.path = p.folder("scripts") / name
+            ed.save_to(ed.path)
+            p.script = p.relative(ed.path)
+            ed.file_changed.emit(ed.path)
+        if self.scene_path is not None:
+            self.scene_path = p.set_scene(self.scene_path)
+        manifest = p.save()
+        self.statusBar().showMessage(f"Saved project {p.name}", 3000)
+        return manifest
+
     # ----- run investigation (PRD §5.11) ---------------------------------------------
     def runs_folder(self) -> Path:
         override = os.environ.get(RUNS_ENV)
         if override:
             return Path(override)
+        if self.project is not None:
+            return self.project.runs_dir
         base = self.scene_path.parent if self.scene_path is not None else Path.cwd()
         return base / "runs"
 
@@ -751,7 +891,9 @@ class MainWindow(QMainWindow):
             "duration": h.time_of(h.n - 1) - h.time_of(0),
             "source": "app",
             "units": {k: u for k, u in h.units.items() if u},
-            "params": {},
+            "params": {
+                k: (v.tolist() if hasattr(v, "tolist") else v) for k, v in desc.params.items()
+            },
         }
         write_table(h.table(meta), path)
         scene_file = str(self.scene_path.resolve()) if self.scene_path is not None else None

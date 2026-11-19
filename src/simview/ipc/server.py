@@ -204,6 +204,12 @@ class Server:
         elif cmd == proto.TARGET:
             self.scene.targets[msg["name"]].pose = np.array(msg["pose"], dtype=np.float64)
             self.publish(force=True)
+        elif cmd == proto.PARAM:
+            try:
+                self.sim.params.set(str(msg["name"]), msg["value"])
+            except (AttributeError, TypeError) as exc:
+                self.sock.send_pyobj({"event": proto.LOG, "stream": "stderr", "text": f"{exc}\n"})
+            self.sock.send_pyobj({"event": proto.PARAMS, "values": self.sim.params.to_dict()})
         elif cmd == proto.BODY_POSE:
             body = self.scene[msg["name"]]
             body.x[:3] = msg["pos"]

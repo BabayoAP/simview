@@ -453,3 +453,81 @@ UI rendered on every timer tick even when nothing had changed. Draw actors are n
 removed without rendering, the UI renders only when the shown moment, the history, or the draws
 changed, and an empty draw set is one shared object. Measured: a finding click on an open run
 takes 49–62 ms with the OpenGL viewport (it was 67–124 ms).
+
+## M6
+
+**D-063 — M6 dependencies.** `qtconsole`, `ipykernel`, and `pygments`, all named in PRD §8.1
+(console: qtconsole + ipykernel in-process; editor: QPlainTextEdit + Pygments). QScintilla is
+not used, so nothing needed asking.
+
+**D-064 — Declaring parameters (SC-05).** A scene file declares them: `scene.params.kp = 2000.0`
+(numbers or arrays of numbers). Controllers read `ctx.params.kp` (or `scene.params`, the same
+object as `sim.params`). The set of names is fixed when a run starts (`Sim` freezes it), so
+`sim.params.kpp = 3` is an error instead of a silent no-op, and a value keeps its kind (a
+number stays a float, an array keeps its shape). Scalar parameters are logged every tick as
+`params.<name>` channels, so a live change shows in plots, reports, comparisons, and scenarios;
+arrays are not logged. The run's metadata `params` holds the values at the start. Stop / Reset
+reloads the scene file, so parameters go back to the file's values.
+
+**D-065 — "Takes effect on the next tick."** The UI sends `{"cmd": "param"}`; the sim process
+applies it between ticks (its command poll runs every loop iteration, at most one publish
+period, about 8 ms, apart while running flat out), so the next tick computed uses it. The sim
+answers with its current values (`"params"` event), also after rejecting a value, whose reason
+goes to the console as stderr.
+
+**D-066 — `sim` in the console (SC-01).** The sim runs in its own process (SE-02), so `sim` in
+the console is a handle: `sim.t`, `sim.tick`, `sim.dt`, `sim.running`, `sim.entities`,
+`sim.state(name)` (a dict by state name), `sim.signals` and `sim.data(signal=None)` (the recorded
+history, what the timeline and plots show), `sim.params`, and `sim.play() / pause() / step(n)
+/ reset()`. `sim.scene` builds a copy of the scene from its file inside the console, for
+kinematics and inspection (UC-3: `sim.scene["ur5"].fk(q)`); it doesn't move with the sim. The
+namespace also has `sv` (simview) and `np`.
+
+**D-067 — One kernel per UI process.** IPython's shell is a process singleton, so every window
+shares one in-process kernel and namespace; the newest window's `sim` is the one in it. Output
+and tracebacks from the sim process (NF-10) are written above the prompt on a line of their own.
+IPython also installs its namespace as `__main__`, and `%run` leaves `__file__` there, which
+`multiprocessing`'s spawn would run again in a new sim process; `SimClient.start` hides
+`__main__.__file__` while spawning (the sim process only needs `simview.ipc.server.serve`).
+
+**D-068 — Editor (SC-02).** One script at a time with New / Open / Save. Run File (F5) saves the
+file and runs it with `%run -i`, so it sees `sim` and its variables land in the workspace (an
+untitled script runs its text as typed). Run Selection (F9) runs the selected whole lines, or
+the current line when nothing is selected, dedented. Tab inserts 4 spaces. Ctrl/Cmd+S is the
+window's Save: it saves the project, or with no project open, the editor's script. The editor
+has no Save shortcut of its own, since two Ctrl+S shortcuts would cancel each other.
+
+**D-069 — Workspace browser (SC-03).** It lists the console's user variables, refreshed after
+every cell (typed, Run File, imports): not `_private` names, modules, functions, classes, or the
+names SimView puts there (`sim`, `sv`, `np`, unless reassigned). Columns are Name, Value, Shape,
+Type, with Value second because the side panel is narrow (full preview in its tooltip).
+Double-clicking a NumPy array opens a table: 0-D and 1-D as one column, 2-D as is, higher
+dimensions as (first axis, the rest), record arrays with one column per field, up to 1M cells.
+
+**D-070 — The console dock has no empty state.** §7.8 asks every empty panel for a hint and an
+action. The console is a live prompt with a banner, so it is never empty; the editor's hint is
+its placeholder text, next to its Open button. The Workspace panel keeps an empty state (with
+Import Data…) until a variable exists.
+
+**D-071 — Importing data (IO-02).** File > Import Data reads a CSV file into one record array
+named after the file (`flight_log["alt"]`; numeric columns as float64 with empty cells as NaN,
+other columns as text) or a `.mat` file's variables by their own names (`scipy.io.loadmat`,
+`squeeze_me=True`; MATLAB v7.3 files are HDF5 and need re-saving with `-v7`). The same functions
+are `sv.io.data.load_csv`, `load_mat`, and `load_data` in scripts.
+
+**D-072 — Projects (IO-04).** A `<name>.svproj` folder with `project.json` (format 1, name, the
+open scene and script as relative paths) and `scenes/`, `diagrams/` (for M7), `scripts/`, and
+`runs/`. Save Project copies the open scene and script into the folder if they came from
+elsewhere (never overwriting: `name-1.py`), saves the script, and writes `project.json`; runs
+are written to `runs/` when they stop (RI-01), and the Runs panel shows that folder. Files the
+scene loads by relative path aren't copied. Workspace variables aren't saved (re-run the script).
+Unknown `project.json` keys are kept on save; a newer format is refused. Opening a project loads
+its scene and opens its script; the window layout is kept per project (DS-03, keyed by path).
+New Project, Open Project, Save Project (Ctrl/Cmd+S), and Import Data are in the File menu,
+the Project button, and the command palette.
+
+**D-073 — Code colors.** New `SYNTAX` tokens per theme (keyword, string, number, comment,
+function, class, builtin, decorator), each ≥ 4.5:1 on `bg.panel` and `bg.elevated` (tested).
+One Pygments style built from them colors the editor and the console; the console's prompts
+and errors use the existing accent, success, and error tokens. Code text uses JetBrains Mono
+through a `role="code"` stylesheet rule (the app-wide `*` rule otherwise forces Inter).

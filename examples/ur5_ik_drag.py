@@ -4,6 +4,7 @@
 
 Drag the gizmo on the blue target sphere: the arm's tool follows it, the Inspector's joint
 sliders track the joints, and the debug draw shows the goal frame and the remaining error.
+In the console, `sim.params.max_step = 0.002` makes the arm follow ten times slower (SC-05).
 """
 
 import numpy as np
@@ -21,11 +22,13 @@ arm.x0[:6] = home
 arm.set_targets(dict(zip(arm.joint_names, home, strict=True)))
 goal = scene.add_target("goal", arm.fk(home))  # starts at the tool, so nothing moves until dragged
 
-ik = rb.DifferentialIK(arm, max_step=0.02)
+scene.params.max_step = 0.02  # rad per joint per IK step; live-tunable from the console
+ik = rb.DifferentialIK(arm, max_step=scene.params.max_step)
 
 
 @scene.controller(rate=100)
 def follow(t: float, state: sv.Scene, ctx: Context) -> None:
+    ik.max_step = ctx.params.max_step
     arm.set_targets(dict(zip(arm.joint_names, ik.step(goal.pose), strict=True)))
     tool = arm.fk()
     ctx.draw.frame(goal.pose, scale=0.08)

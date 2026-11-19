@@ -107,3 +107,24 @@ def test_light_success_is_text_safe():
     c = tokens.COLORS["light"]
     for bg in SURFACES:
         assert contrast_ratio(c["state.success"], c[bg]) >= 4.5
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+@pytest.mark.parametrize("bg", ["bg.panel", "bg.elevated"])
+def test_syntax_colors_contrast_wcag_aa(theme, bg):
+    """SC-01, SC-02: every code color in the editor and console is readable (>= 4.5:1)."""
+    assert set(tokens.SYNTAX["dark"]) == set(tokens.SYNTAX["light"])
+    for name, color in tokens.SYNTAX[theme].items():
+        ratio = contrast_ratio(color, tokens.COLORS[theme][bg])
+        assert ratio >= 4.5, (theme, name, bg, ratio)
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_code_styles_come_from_tokens(theme):
+    from simview.ui.theme.syntax import console_stylesheet, pygments_style
+
+    style = pygments_style(theme)
+    colors = {f"#{spec['color']}".upper() for _tok, spec in style if spec["color"]}
+    allowed = {c.upper() for c in (*tokens.SYNTAX[theme].values(), *tokens.COLORS[theme].values())}
+    assert colors <= allowed
+    assert tokens.COLORS[theme]["state.error"] in console_stylesheet(theme)

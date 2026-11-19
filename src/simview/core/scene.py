@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from simview.core.entity import Entity
+from simview.core.params import PREFIX, Params, Value
 
 if TYPE_CHECKING:
     import numpy as np
@@ -47,6 +48,11 @@ class Context:
     @property
     def tick(self) -> int:
         return self.sim.tick
+
+    @property
+    def params(self) -> Params:
+        """Live parameters (SC-05): read them here every call, the console can change them."""
+        return self.sim.params
 
 
 @dataclass
@@ -98,6 +104,14 @@ class Scene:
         self.visuals: dict[str, Visual] = {}  # VP-01: mesh files drawn but not simulated
         self.trails: dict[str, TrailStyle] = {}  # VP-04: per-entity trail settings
         self.file: Path | None = None  # the scene file it was loaded from (RI-01), if any
+        # SC-05: live parameters; scalars are logged as `params.<name>` channels.
+        self.params = Params(on_declare=self._param_declared)
+
+    def _param_declared(self, name: str, value: Value) -> None:
+        if isinstance(value, float):
+            channel = PREFIX + name
+            self.channels[channel] = lambda sim, n=name: float(sim.params[n])
+            self.channel_units[channel] = ""
 
     def physics(self) -> World:
         """The scene's MuJoCo world (created on first use, so ODE-only scenes never load it)."""

@@ -55,7 +55,9 @@ def signal_units(scene: Scene) -> dict[str, str]:
     return units
 
 
-def run_metadata(scene: Scene, duration: float, source: str) -> dict[str, Any]:
+def run_metadata(
+    scene: Scene, duration: float, source: str, params: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """The run's metadata stored in its Parquet log. Only what the run itself determines, so
     the same seed gives a byte-identical file (NF-06); context goes in `write_context`."""
     return {
@@ -64,7 +66,7 @@ def run_metadata(scene: Scene, duration: float, source: str) -> dict[str, Any]:
         "duration": duration,
         "version": simview.__version__,
         "source": source,
-        "params": {},  # live parameters (`sim.params`) arrive with M6
+        "params": scene.params.to_json() if params is None else params,  # values at the start
         "units": signal_units(scene),
     }
 
@@ -114,6 +116,7 @@ def run(
     n = tick_count(duration, scene.dt)
     sim = Sim(scene)
     log = Logger(sim, n + 1)
+    start_params = scene.params.to_json()  # changes during the run are `params.*` columns
     start = time.perf_counter()
     log.record()
     for _ in range(n):
@@ -121,6 +124,6 @@ def run(
         log.record()
     wall = time.perf_counter() - start
     path = Path(out) if out is not None else default_log_path(scene.seed)
-    log.write(path, run_metadata(scene, duration, source="sim"))
+    log.write(path, run_metadata(scene, duration, source="sim", params=start_params))
     write_context(path, scene)
     return Run(path, n, wall, duration)

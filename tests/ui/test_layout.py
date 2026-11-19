@@ -47,7 +47,12 @@ def test_bottom_row_spans_full_width(qapp, settings):
 
 def test_every_panel_has_empty_state(qapp, settings):
     w = MainWindow(settings)
-    widgets = [w.viewport, *(d.widget() for d in w.docks.values())]
+    # The console is a live prompt (never empty); the editor's hint is its placeholder text,
+    # next to its Open button (D-070).
+    console = w.docks["console"].widget()
+    assert w.console.shell.banner1 and w.editor.editor.placeholderText()
+    assert w.editor.buttons["open"].toolTip()
+    widgets = [w.viewport, *(d.widget() for d in w.docks.values() if d.widget() is not console)]
     for widget in widgets:
         states = [widget] if isinstance(widget, EmptyState) else widget.findChildren(EmptyState)
         assert states, widget

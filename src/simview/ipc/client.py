@@ -8,6 +8,9 @@ UI keeps running (NF-10); `start()` can launch a new one.
 from __future__ import annotations
 
 import multiprocessing as mp
+import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +45,8 @@ class SimClient:
         self.proc = spawn.Process(
             target=serve, args=(str(self.scene_path), f"tcp://127.0.0.1:{port}"), daemon=True
         )
-        self.proc.start()
+        with _no_main_file():
+            self.proc.start()
         self._dead_reported = False
 
     @property
@@ -93,6 +97,10 @@ class SimClient:
         """Show a saved or imported run: the sim reloads, then sends its log as rows."""
         self.send(proto.REPLAY, path=str(path))
 
+    def set_param(self, name: str, value: Any) -> None:
+        """SC-05: change a live parameter; the sim applies it before its next tick."""
+        self.send(proto.PARAM, name=name, value=value)
+
     def set_target(self, name: str, pose: Any) -> None:
         self.send(proto.TARGET, name=name, pose=pose)
 
@@ -119,3 +127,17 @@ class SimClient:
 
     def frame(self) -> Frame | None:
         return self.buffer.read() if self.buffer is not None else None
+
+
+@contextmanager
+def _no_main_file() -> Iterator[None]:
+    """Spawn re-runs `__main__.__file__` in the child. The sim process doesn't need it, and
+    in the app `__main__` is the console's namespace (IPython puts it there), whose `__file__`
+    is whatever script `%run` ran last: the child would run that script again."""
+    main = sys.modules.get("__main__")
+    saved = main.__dict__.pop("__file__", None) if main is not None else None
+    try:
+        yield
+    finally:
+        if main is not None and saved is not None:
+            main.__dict__["__file__"] = saved

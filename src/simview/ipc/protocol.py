@@ -29,6 +29,10 @@ PLAY, PAUSE, STEP, RESET, SPEED, TARGET, BODY_POSE, QUIT = (
 # Replay a saved or imported run's log (RI-01, RI-06): {"cmd": REPLAY, "path": str}. The sim
 # reloads the scene (READY), then sends {"event": REPLAYED, "rows", "dt", "path"}.
 REPLAY, REPLAYED = "replay", "replayed"
+# Live parameters (SC-05): {"cmd": PARAM, "name": str, "value": float | array}. The sim applies
+# it before its next tick and answers {"event": PARAMS, "values": {name: value}} (also on a
+# rejected value, so the UI's copy stays right).
+PARAM, PARAMS = "param", "params"
 # Events, sim -> UI: {"event": name, ...}
 READY, ERROR, LOG, DRAWS, STOPPED = "ready", "error", "log", "draws", "stopped"
 # Per-tick history rows (VP-05, DA-01): {"event": ROWS, "rows": (n, width) float64 array}.
@@ -73,6 +77,7 @@ class Description:
     visuals: dict[str, tuple[str, np.ndarray, float, str | None]] = field(default_factory=dict)
     # VP-04 trail settings: entity -> (seconds, color or None)
     trails: dict[str, tuple[float, str | None]] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)  # SC-05: values when loaded
 
     def entity_of_body(self, body: int) -> str | None:
         for e in self.entities:
@@ -102,6 +107,7 @@ def describe(scene: Scene) -> Description:
             k: (str(v.path), v.pose.copy(), v.scale, v.color) for k, v in scene.visuals.items()
         },
         trails={k: (v.seconds, v.color) for k, v in scene.trails.items()},
+        params=scene.params.to_dict(),
     )
     world = scene.world
     if world is not None:

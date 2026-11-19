@@ -6,7 +6,7 @@ from simview.core.entity import Entity  # noqa: E402
 from simview.core.scene import Scene  # noqa: E402
 from simview.runner.run import Run, run  # noqa: E402
 
-__all__ = ["Entity", "Run", "Scene", "robotics", "run"]
+__all__ = ["Entity", "Run", "Scene", "io", "robotics", "run"]
 
 
 def __getattr__(name: str) -> object:
@@ -15,4 +15,8 @@ def __getattr__(name: str) -> object:
         import simview.toolboxes.robotics as robotics
 
         return robotics
+    if name == "io":
+        import simview.io as io
+
+        return io
     raise AttributeError(f"module 'simview' has no attribute {name!r}")
