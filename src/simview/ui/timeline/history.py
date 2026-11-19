@@ -18,6 +18,7 @@ from simview.ipc.shm import Frame
 # Memory the history may use before its oldest quarter is dropped (D-049).
 MAX_BYTES = 512 * 1024**2
 TRAIL_POINTS = 2000  # most points a replayed trail is drawn with
+NO_DRAWS: list[tuple] = []  # one shared object: the UI redraws only when draws change identity
 
 
 class History:
@@ -134,7 +135,7 @@ class History:
     def draws_at(self, tick: int) -> list[tuple]:
         """The debug draws shown at `tick` (the newest set sent at or before it)."""
         k = bisect.bisect_right(self._draws, tick, key=lambda d: d[0])
-        return self._draws[k - 1][1] if k else []
+        return self._draws[k - 1][1] if k else NO_DRAWS
 
     def trails(self, i: int, seconds: dict[str, float]) -> dict[str, np.ndarray]:
         """Each marker's path over the `seconds` before row `i`, as (n, 3) points (VP-04)."""

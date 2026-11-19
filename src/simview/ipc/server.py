@@ -18,7 +18,7 @@ import numpy as np
 import zmq
 
 from simview.ipc import protocol as proto
-from simview.ipc.record import RowLayout, record_row, row_layout
+from simview.ipc.record import RowLayout, record_row, replay_rows, row_layout
 from simview.ipc.shm import Layout, StateBuffer
 
 PUBLISH_PERIOD = 1 / 120  # s of wall time between state frames (twice the 60 Hz render rate)
@@ -111,6 +111,24 @@ class Server:
         self.publish(force=True)
         return True
 
+    def replay(self, path: str) -> None:
+        """Reload the scene, then send a saved run's log as history rows (RI-01, RI-06)."""
+        if not self.load():
+            return
+        assert self.row_layout is not None
+        try:
+            rows, dt = replay_rows(self.scene, self.sim, self.row_layout, path)
+        except Exception:  # noqa: BLE001 - a bad log must reach the console, not kill the sim
+            self.error()
+            return
+        finally:  # the live sim goes back to its start state
+            for e in self.scene.entities.values():
+                e.reset()
+            if self.scene.world is not None:
+                self.scene.world.reset()
+            self.sim.tick = 0
+        self.sock.send_pyobj({"event": proto.REPLAYED, "rows": rows, "dt": dt, "path": path})
+
     def error(self) -> None:
         self.running = False
         self.sock.send_pyobj({"event": proto.ERROR, "traceback": traceback.format_exc()})
@@ -162,6 +180,9 @@ class Server:
             return False
         if cmd == proto.RESET:
             self.load()
+            return True
+        if cmd == proto.REPLAY:
+            self.replay(str(msg["path"]))
             return True
         if self.sim is None:
             return True

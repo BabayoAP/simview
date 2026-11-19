@@ -1,6 +1,10 @@
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+if "SIMVIEW_RUNS" not in os.environ:  # runs the app saves go to a temp folder, not the repo
+    import tempfile
+
+    os.environ["SIMVIEW_RUNS"] = tempfile.mkdtemp(prefix="simview-runs-")
 
 import pytest  # noqa: E402
 from qtpy.QtCore import QEvent, QSettings  # noqa: E402

@@ -97,6 +97,7 @@ class Scene:
         self.targets: dict[str, Target] = {}
         self.visuals: dict[str, Visual] = {}  # VP-01: mesh files drawn but not simulated
         self.trails: dict[str, TrailStyle] = {}  # VP-04: per-entity trail settings
+        self.file: Path | None = None  # the scene file it was loaded from (RI-01), if any
 
     def physics(self) -> World:
         """The scene's MuJoCo world (created on first use, so ODE-only scenes never load it)."""

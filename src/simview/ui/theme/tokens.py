@@ -128,6 +128,7 @@ PLOT_CURSOR_SYMBOL: Final = 9  # px, the time-cursor dot on XY and scatter plots
 PLOT_MIN_HEIGHT: Final = 100  # one plot fits the default bottom row without scrolling
 PLOT_FPS: Final = 30  # redraw rate while data streams in (DA-01)
 PLOT_EXPORT_SCALE: Final = 2  # PNG exports at 2x the on-screen size
+RUNS_LIST_MIN_HEIGHT: Final = 40  # px, the Runs panel's lists (they scroll below this)
 
 # Motion (ms).
 MOTION_FAST: Final = 150

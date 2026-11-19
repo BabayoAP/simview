@@ -3,7 +3,8 @@
 The view is either *live* (following the sim process) or parked on a recorded row. Scrubbing or
 stepping back pauses the sim and parks the view. Play from a parked row replays the recording at
 the playback speed and, at its end, hands over to the live sim, which carries on from where it
-is. Hovering a plot previews a row without moving the cursor. Qt-free.
+is. Hovering a plot previews a row without moving the cursor. A *recorded* history (a saved
+or imported run, RI-01) has no live sim behind it: its end is just the end. Qt-free.
 """
 
 from __future__ import annotations
@@ -29,13 +30,15 @@ class Playback:
         self.preview: int | None = None  # row under a hovering plot cursor (DA-02)
         self.sim_running = False
         self.replaying = False
+        self.recorded = False
         self._replay_t = 0.0
 
-    def reset(self, history: History | None) -> None:
-        """A (re)loaded scene: back to live, nothing replaying."""
+    def reset(self, history: History | None, recorded: bool = False) -> None:
+        """A (re)loaded scene (live) or an opened run (`recorded`): nothing replaying."""
         self.history = history
         self.cursor = self.preview = None
         self.replaying = False
+        self.recorded = recorded
 
     # -- what to show -----------------------------------------------------------------------
     @property
@@ -63,6 +66,8 @@ class Playback:
 
     # -- transport -----------------------------------------------------------------------------
     def play(self) -> None:
+        if self.recorded and self.cursor is None:
+            self.cursor = 0  # a saved run plays from its start
         if self.cursor is None:
             self.sim_running = True
             self.sim.play()
@@ -95,6 +100,8 @@ class Playback:
         self.seek(self.index - 1)
 
     def step_forward(self) -> None:
+        if self.cursor is None and self.recorded:
+            return  # the end of a saved run
         if self.cursor is None:
             self.pause()
             self.sim.step()
@@ -119,7 +126,10 @@ class Playback:
         i = self.history.index_at(self._replay_t)
         if self.history.time_of(i) > self._replay_t and i > 0:
             i -= 1  # never show a row from the future
-        if i >= self.last:
+        if i >= self.last and self.recorded:
+            self.replaying = False
+            self.cursor = None  # parked at the end
+        elif i >= self.last:
             self.replaying = False
             self.cursor = None
             self.sim_running = True

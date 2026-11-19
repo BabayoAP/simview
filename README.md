@@ -2,7 +2,7 @@
 
 Build, run, and visualize simulations of robots, vehicles, drones, and dynamic systems, in Python.
 
-> Status: M5 (timeline scrubbing and replay, live plots, data and plot export). See [docs/PRD.md](docs/PRD.md) for the milestone plan and [docs/PROGRESS.md](docs/PROGRESS.md) for where things stand.
+> Status: M5b (run investigation: run catalog, scenarios, findings, reports, comparison, log import). See [docs/PRD.md](docs/PRD.md) for the milestone plan and [docs/PROGRESS.md](docs/PROGRESS.md) for where things stand.
 
 ## Install and run
 
@@ -51,6 +51,19 @@ Play from an earlier point replays the run, then carries on live. Drag signals f
 panel onto the Plots panel (time, XY, scatter, histogram); hovering a time plot shows that moment
 in the 3D view. Export Data writes every signal to CSV, Parquet, or MATLAB `.mat`; each plot
 exports to PNG or SVG in the light theme.
+
+## Investigate runs
+
+Every run is a Parquet log in a run folder (`runs/`; the app saves a run when you press Stop).
+Define a pattern once and scan every run for it; each match names its run, signals, and time
+window, and clicking it in the app's Runs panel jumps the timeline there.
+
+```bash
+.venv/bin/simview runs scan -s "lifted: cube.z > 0.08 for 0.5 s" --save   # every run
+.venv/bin/simview runs report <run> -o report.html                         # HTML debrief
+.venv/bin/simview runs compare <run> <baseline> --atol 1e-6                # first divergence
+.venv/bin/simview runs import robot.csv --time t --map ur5.shoulder_pan_joint.q=j1
+```
 
 ## Robots
 

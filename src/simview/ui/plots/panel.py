@@ -648,6 +648,20 @@ class PlotPanel(QWidget):
         for p in self.plots:
             p.refresh()
 
+    def show_window(self, signals: list[str], start: float, end: float, dt: float) -> None:
+        """RI-03: time plots zoom to a finding's window (with some context either side); its
+        signals get a time plot if none shows them yet."""
+        if self.history is None:
+            return
+        names = [s for s in signals if s in self.history.units]
+        has = any(p.kind == "time" and set(names) <= set(p.names) for p in self.plots)
+        if names and not has:
+            self.add_plot("time", names)
+        pad = max(0.5 * (end - start), 50 * dt)
+        for p in self.plots:
+            if p.kind == "time":
+                p.plot.vb.setXRange(start - pad, end + pad, padding=0)
+
     def set_cursor(self, index: int | None, hover: int | None = None) -> None:
         self._cursor = (index, hover)
         for p in self.plots:

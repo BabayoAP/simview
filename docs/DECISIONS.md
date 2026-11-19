@@ -385,3 +385,71 @@ test teardown deletes plain stray widgets last. (5) The shared-memory reader gav
 quick retries, so a writer descheduled mid-frame (a busy 2-core CI machine) made `frame()` return
 None; it now yields and waits out a write for up to 20 ms. The GL scrub test checks timing only
 off CI: CI renders OpenGL in software (0.3–1.3 s a frame).
+
+## M5b
+
+**D-055 — Scenario expressions (RI-02).** A scenario is `condition for <n> s|ms` (no `for`: any
+single sample). The condition is parsed with Python's `ast` and only a whitelist is evaluated:
+numbers, signal names (`entity.state` or a channel; backticks quote any other name; `t` is
+time), comparisons (chains too), arithmetic, `and`/`or`/`not`, and `abs sqrt hypot min max deg
+rad`. Anything else (calls, attributes of non-signals, strings, subscripts) is refused when the
+scenario is defined. A Python predicate (`Scenario(name, predicate=fn, signals=[...])`) is the
+escape hatch. "Holds for d" counts each sample as one sample period long: k consecutive samples
+last k·dt. A match is the window from its first to its last sample. A run that doesn't log a
+needed signal is reported as "not checked: missing …", never as no match (RI-03).
+
+**D-056 — The run catalog (RI-01).** A run is a Parquet log (SE-06) in a run folder: `runs/` next
+to the scene file in the app (projects arrive in M6), `runs/` in the working directory headless,
+or `SIMVIEW_RUNS`. The log's metadata gains `source` (sim, app, import), `units`, and `params`
+(empty until `sim.params`, M6). The date and the scene file go in a sidecar `<run>.run.json`,
+because the log itself must stay byte-identical for the same seed (NF-06, and SC-04 compares a
+scene file's log with the same scene built in code). The catalog reads only Parquet footers and
+sidecars; there is no separate index to go stale. The app saves the live run when it is stopped
+(or the scene closed), if it has more than one sample.
+
+**D-057 — Scanning (RI-02).** Results of expression scenarios are cached per run in
+`<folder>/.scan-cache.json`, keyed by the run file's size and modification time and by the
+scenario's name and text, so a scan reads only new or changed runs ("new runs are scanned when
+they finish": the app scans right after saving a run; headless, `simview runs scan` or
+`investigate.scan`). Predicates aren't cached. Expression scenarios are saved in
+`<folder>/scenarios.json`.
+
+**D-058 — Opening a run replays it through its scene (RI-01, RI-06).** The sim process loads the
+run's scene, then for each logged row sets the entities' states (states the log lacks keep their
+start values), recomputes markers and body poses, and sends the rows as history; channels come
+from the log. The timeline then shows the run in "recorded" mode: Play replays it and stops at
+its end, step forward stops there too, and Stop goes back to the live scene. Debug draws aren't
+in logs, so a replayed run shows none. An imported log's unmapped columns aren't scene signals:
+they are scanned and reported, but not in the Signals panel.
+
+**D-059 — Findings, comparisons (RI-03, RI-05).** Findings are grouped by run in the Runs
+panel. Clicking one opens its run if another is shown, moves the timeline to the window's start,
+zooms every time plot to the window with context either side, and adds a time plot of its
+signals if none shows them. Comparison aligns two runs on shared ticks when their sample periods
+match, otherwise interpolates the baseline onto the run's times, over the time both cover. A
+signal diverges where |Δ| > atol + rtol·|baseline| (the app uses 1e-6 and 1e-6; the API and CLI
+default to 1e-9 and 0). Each first divergence and each scenario match found in only one run
+becomes a finding; `simview runs compare` exits 1 when anything diverged.
+
+**D-060 — Reports (RI-04).** One self-contained HTML file: inline CSS from the light-theme
+tokens, plots as inline SVG drawn with matplotlib (text as outlines, so no fonts are needed),
+no scripts or links. Per run: metadata, every match (scenario, window, signals), the scenarios
+it couldn't check, plots of the matched scenarios' signals with the windows shaded (or the
+run's channels when nothing matched), and min/max/mean/final of every signal with units. A set
+of runs adds a scenario × run table; a comparison adds its table and a plot. The app writes
+reports to `<run folder>/reports/` and opens them. New dependency: `matplotlib` (PRD §8.1 lists
+it for exports).
+
+**D-061 — Importing logs (RI-06).** CSV or Parquet; `mapping` renames log columns to scene
+signals (`ur5.shoulder_pan_joint.q=j1`). Time comes from one column (scaled, e.g. ms → s),
+shifted to start at 0; rows are sorted by time and repeated times dropped; the sample period is
+the median spacing and ticks are time / period. Other numeric columns are kept under their own
+names. The app's Import asks for the file, then shows a `signal = column` mapping prefilled with
+columns that already match the scene's signals.
+
+**D-062 — Faster scrubbing.** Scrubbing a run rendered the 3D view three to four times per move:
+pyvista re-renders whenever an actor is added or removed (the debug draws are rebuilt), and the
+UI rendered on every timer tick even when nothing had changed. Draw actors are now added and
+removed without rendering, the UI renders only when the shown moment, the history, or the draws
+changed, and an empty draw set is one shared object. Measured: a finding click on an open run
+takes 49–62 ms with the OpenGL viewport (it was 67–124 ms).

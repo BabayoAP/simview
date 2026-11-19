@@ -31,7 +31,15 @@ def test_log_has_every_state_and_channel_each_tick(tmp_path):
     assert result["tick"].tolist() == list(range(2001))
     assert result["t"][-1] == pytest.approx(2.0)
     meta = json.loads(table.schema.metadata[b"simview"])
-    assert meta == {"dt": 0.001, "duration": 2.0, "seed": 42, "version": "0.1.0"}
+    assert meta == {
+        "dt": 0.001,
+        "duration": 2.0,
+        "seed": 42,
+        "version": "0.1.0",
+        "source": "sim",  # RI-01 catalog fields (M5b); the date and scene are in the sidecar
+        "params": {},
+        "units": {},
+    }
 
 
 def test_bouncing_ball_physics(tmp_path):

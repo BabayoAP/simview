@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,51 @@ class Run:
         return self.table().to_pandas()
 
 
+def signal_units(scene: Scene) -> dict[str, str]:
+    """Units of every logged signal that has one (plot and report labels, DS-09)."""
+    units = {
+        f"{e.name}.{s}": u for e in scene.entities.values() for s, u in e.state_units.items() if u
+    }
+    units.update({k: u for k, u in scene.channel_units.items() if u})
+    return units
+
+
+def run_metadata(scene: Scene, duration: float, source: str) -> dict[str, Any]:
+    """The run's metadata stored in its Parquet log. Only what the run itself determines, so
+    the same seed gives a byte-identical file (NF-06); context goes in `write_context`."""
+    return {
+        "dt": scene.dt,
+        "seed": scene.seed,
+        "duration": duration,
+        "version": simview.__version__,
+        "source": source,
+        "params": {},  # live parameters (`sim.params`) arrive with M6
+        "units": signal_units(scene),
+    }
+
+
+def write_context(
+    path: Path, scene: Scene | None = None, *, scene_file: str | None = None, **extra: Any
+) -> Path:
+    """The run's context for the catalog (RI-01): when it ran and which scene file it came
+    from, in `<run>.run.json` next to the log (D-056)."""
+    import json
+
+    ctx: dict[str, Any] = {"date": datetime.now().isoformat(timespec="seconds")}
+    if scene is not None and scene.file is not None:
+        ctx["scene"] = str(scene.file)
+    if scene_file is not None:
+        ctx["scene"] = scene_file
+    ctx.update(extra)
+    side = context_path(path)
+    side.write_text(json.dumps(ctx, indent=2) + "\n", encoding="utf-8")
+    return side
+
+
+def context_path(path: Path) -> Path:
+    return path.with_suffix(".run.json")
+
+
 def default_log_path(seed: int) -> Path:
     stamp = time.strftime("%Y%m%d-%H%M%S")
     path = Path("runs") / f"{stamp}-seed{seed}.parquet"
@@ -75,8 +121,6 @@ def run(
         log.record()
     wall = time.perf_counter() - start
     path = Path(out) if out is not None else default_log_path(scene.seed)
-    log.write(
-        path,
-        {"dt": scene.dt, "seed": scene.seed, "duration": duration, "version": simview.__version__},
-    )
+    log.write(path, run_metadata(scene, duration, source="sim"))
+    write_context(path, scene)
     return Run(path, n, wall, duration)

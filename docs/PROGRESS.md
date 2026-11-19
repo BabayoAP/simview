@@ -11,7 +11,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M3b: Robotics depth (PRD 1.1) | ✅ Approved 2026-11-18 | `main` | RB-01–RB-12, TB-ROBOT (rest) |
 | M4: Viewport + IPC | ✅ Approved 2026-11-18 | `main` | SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06 |
 | M5: Timeline + plots | ✅ Approved 2026-11-19 | `main` | VP-05, DA-01–DA-04, DA-07, DS-09 |
-| M5b: Run investigation (PRD 1.2) | Not started | | RI-01–RI-06 |
+| M5b: Run investigation (PRD 1.2) | Built, **awaiting approval** | `m5b-run-investigation` | RI-01–RI-06 |
 | M6–M10 | Not started | | see PRD §10 |
 
 ## M1: Skeleton + design system
@@ -162,6 +162,46 @@ Not checked by me (needs a person at the mouse): dragging signals from the tree 
 tests drive the drop handler, not a real drag), how scrubbing and replay feel, zooming and panning
 a plot by hand, and the XY, scatter, and histogram plots by eye (tested, not screenshotted).
 
+## M5b: Run investigation
+
+- `simview/investigate/` (headless, Qt-free except the report's color tokens): the run catalog
+  (`runs.py`), scenarios and scanning with a cache (`scenario.py`), comparison (`compare.py`),
+  HTML reports (`report.py`), log import (`importer.py`), and `simview runs list|scan|report|
+  compare|import` (`cli.py`).
+- Runs carry their source, units, and parameters in the log, and their date and scene file in a
+  `<run>.run.json` sidecar, so same-seed logs stay byte-identical (D-056).
+- App: a Runs panel (tabbed with the console) lists the run folder's runs with a filter; Stop
+  saves the live run and scans it; scenarios are typed as `name: condition for 0.1 s`; findings
+  are grouped by run and clicking one opens the run (replayed through its scene, D-058) and moves
+  the timeline, viewport, and plots to its window; Report, Compare, and Import act on the
+  selection.
+- Scrubbing renders once per move now (D-062).
+- Done-when:
+  - A scenario defined once finds every injected event across 20 runs with no misses and no false
+    matches ✅ (test: 20 seeded runs, 1–3 events each, plus 0.04 s near misses and long
+    sub-threshold stretches that must not match; windows checked to 1e-9 s).
+  - A report for the UC-3 pick run exports with its plots ✅ (test: `ur5_pick.py` run 5.5 s,
+    scenarios "cube lifted" and "fingers closed" plotted as inline SVG, a missing-signal note,
+    statistics with units, no scripts or external links).
+  - Clicking a finding moves the timeline to it within 100 ms ✅ (test, no-GL view; measured
+    49–62 ms with the OpenGL viewport at 1440×900).
+  - An imported CSV log replays in the viewport ✅ (test: a CSV of UR5 joint angles, mapped onto
+    the robot; the viewport's frame has the logged joints, the FK tool position, and body poses).
+- Requirement IDs: RI-01 ✅ RI-02 ✅ RI-03 ✅ RI-04 ✅ RI-05 ✅ RI-06 ✅.
+- 325 tests (31 new, 13 of them `gl`); `simview/investigate` coverage 97%, `simview/core` 91%.
+  New dependency: `matplotlib` (PRD §8.1).
+
+### Manual checks (visual, §0 rule 5)
+
+Checked: the Runs panel in the light theme (two app runs, two scenarios, grouped findings), and a
+run report rendered by a browser (scenario table, the matched window shaded on the plot, the
+signal table with units). Not checked by me: the panel in the dark theme and inside the full
+window (the screen was locked by then, so window captures came back blank; the panel was
+captured on its own), the Import mapping dialog by hand, and a comparison report by eye (tested).
+
 ## Next
 
-1. Start **M5b: Run investigation** (RI-01–RI-06).
+1. Owner reviews M5b (`simview examples/ur5_ik_drag.py`; open the Runs tab; add
+   `moving: abs(ur5.shoulder_pan_joint.v) > 0.05 for 0.02 s`; run, drag the target, Stop; click
+   the finding).
+2. Start **M6: Console + workspace** (SC-01–SC-05, IO-02, IO-04).

@@ -16,6 +16,7 @@ def load_scene(path: str | Path) -> Scene:
     scene = namespace.get("scene")
     if not isinstance(scene, Scene):
         raise TypeError(f"{path} must define a module-level `scene = simview.Scene(...)`")
+    scene.file = Path(path).resolve()
     return scene
 
 

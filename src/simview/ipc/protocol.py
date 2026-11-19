@@ -26,6 +26,9 @@ PLAY, PAUSE, STEP, RESET, SPEED, TARGET, BODY_POSE, QUIT = (
     "body_pose",
     "quit",
 )
+# Replay a saved or imported run's log (RI-01, RI-06): {"cmd": REPLAY, "path": str}. The sim
+# reloads the scene (READY), then sends {"event": REPLAYED, "rows", "dt", "path"}.
+REPLAY, REPLAYED = "replay", "replayed"
 # Events, sim -> UI: {"event": name, ...}
 READY, ERROR, LOG, DRAWS, STOPPED = "ready", "error", "log", "draws", "stopped"
 # Per-tick history rows (VP-05, DA-01): {"event": ROWS, "rows": (n, width) float64 array}.
@@ -60,6 +63,7 @@ class EntityInfo:
 @dataclass
 class Description:
     dt: float
+    seed: int = 0
     entities: list[EntityInfo] = field(default_factory=list)
     geoms: list[Geom] = field(default_factory=list)
     body_names: list[str] = field(default_factory=list)
@@ -92,6 +96,7 @@ def describe(scene: Scene) -> Description:
     """Plain-data description of everything the viewport draws."""
     desc = Description(
         dt=scene.dt,
+        seed=scene.seed,
         targets={k: v.pose.copy() for k, v in scene.targets.items()},
         visuals={
             k: (str(v.path), v.pose.copy(), v.scale, v.color) for k, v in scene.visuals.items()

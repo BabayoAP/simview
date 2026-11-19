@@ -89,6 +89,10 @@ class SimClient:
         """Playback speed as a multiple of real time (0.1-10); 0 runs as fast as possible."""
         self.send(proto.SPEED, speed=speed)
 
+    def replay(self, path: str | Path) -> None:
+        """Show a saved or imported run: the sim reloads, then sends its log as rows."""
+        self.send(proto.REPLAY, path=str(path))
+
     def set_target(self, name: str, pose: Any) -> None:
         self.send(proto.TARGET, name=name, pose=pose)
 

@@ -499,6 +499,7 @@ class Viewport(QWidget):
                     line_width=tokens.TRAIL_WIDTH,
                     pickable=False,
                     name=f"trail:{name}",
+                    render=False,
                     lighting=False,
                 )
                 self.trail_actors[name] = actor
@@ -510,13 +511,13 @@ class Viewport(QWidget):
         """VP-07: replace the debug draws."""
         p = self.plotter
         for a in self.draw_actors:
-            p.remove_actor(a)
+            p.remove_actor(a, render=False)  # one render per frame, by the caller
         self.draw_actors = []
         self.draw_meshes = []
         g = model.draw_geometry(draws, self.theme)
         # Batched: one actor per line width / point size / label style, not one per draw, so a
         # controller that draws every tick stays cheap.
-        common = {"pickable": False, "lighting": False, "reset_camera": False}
+        common = {"pickable": False, "lighting": False, "reset_camera": False, "render": False}
         for width, items in _group(g.lines, key=lambda d: d[3]).items():
             pts = np.array([q for a, b, _c, _w in items for q in (a, b)], dtype=float)
             lines = np.hstack([[2, 2 * i, 2 * i + 1] for i in range(len(items))])
@@ -537,7 +538,14 @@ class Viewport(QWidget):
             merged = arrows[0].merge(arrows[1:]) if len(arrows) > 1 else arrows[0]
             self.draw_meshes.append(merged)
             self.draw_actors.append(
-                p.add_mesh(merged, scalars="rgb", rgb=True, pickable=False, reset_camera=False)
+                p.add_mesh(
+                    merged,
+                    scalars="rgb",
+                    rgb=True,
+                    pickable=False,
+                    reset_camera=False,
+                    render=False,
+                )
             )
         for size, items in _group(g.points, key=lambda d: d[2]).items():
             cloud = pv.PolyData(np.array([pt for pt, _c, _s in items], dtype=float))
@@ -565,6 +573,7 @@ class Viewport(QWidget):
                     show_points=False,
                     always_visible=True,
                     reset_camera=False,
+                    render=False,
                 )
             )
 

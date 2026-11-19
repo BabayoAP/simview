@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from collections.abc import Callable
@@ -32,6 +33,7 @@ from simview.ui.command_palette import CommandPalette
 from simview.ui.panels import EmptyState
 from simview.ui.plots.panel import PlotPanel
 from simview.ui.plots.signals import SignalTree
+from simview.ui.runs_panel import RunsPanel
 from simview.ui.sim_panels import Console, Inspector, NoViewport, SceneTree
 from simview.ui.theme import icon, tokens
 from simview.ui.timeline.history import History
@@ -59,8 +61,11 @@ DOCKS: tuple[tuple[str, str, Qt.DockWidgetArea], ...] = (
     ("timeline", "Timeline", Qt.DockWidgetArea.BottomDockWidgetArea),
     ("plots", "Plots", Qt.DockWidgetArea.BottomDockWidgetArea),
     ("console", "Console / Editor", Qt.DockWidgetArea.BottomDockWidgetArea),
+    ("runs", "Runs", Qt.DockWidgetArea.BottomDockWidgetArea),
 )
-LAYOUT_VERSION = 2  # 2: M5 panels; drops layouts saved with the M4 collapsed-viewport bug
+LAYOUT_VERSION = 3  # 2: M5 panels, dropping layouts with the M4 viewport bug; 3: Runs (M5b)
+COMPARE_ATOL, COMPARE_RTOL = 1e-6, 1e-6  # run comparison tolerance in the app (D-059)
+RUNS_ENV = "SIMVIEW_RUNS"  # overrides the run folder (default: `runs/` next to the scene file)
 
 UNTITLED = "untitled"
 
@@ -93,6 +98,11 @@ class MainWindow(QMainWindow):
         self.inspector: Inspector | None = None
         self.console: Console | None = None
         self.signal_tree: SignalTree | None = None
+        self.runs: RunsPanel | None = None
+        self.opened_run: Any = None  # RunInfo shown on the timeline, or None for the live sim
+        self._pending_run: Any = None  # RunInfo to replay once the scene is ready
+        self._pending_finding: Any = None  # Finding to show once its run has replayed
+        self.open_reports = True  # open written reports in the browser (tests turn it off)
         self.plots: PlotPanel | None = None
         self.timeline: Timeline | None = None
         self.history: History | None = None
@@ -287,6 +297,12 @@ class MainWindow(QMainWindow):
                 "Show Signals",
                 a("view.focus.signals").trigger,
             ),
+            "runs": (
+                "history",
+                "Open a scene to see its saved runs.",
+                "Open Scene…",
+                a("file.open_scene").trigger,
+            ),
         }
         if name == "timeline":
             hint = "Run a simulation to scrub through time."
@@ -341,6 +357,8 @@ class MainWindow(QMainWindow):
         self.splitDockWidget(d["inspector"], d["workspace"], Qt.Orientation.Vertical)
         self.splitDockWidget(d["timeline"], d["plots"], Qt.Orientation.Vertical)
         self.splitDockWidget(d["plots"], d["console"], Qt.Orientation.Horizontal)
+        self.tabifyDockWidget(d["console"], d["runs"])
+        d["console"].raise_()
 
     def _apply_default_sizes(self) -> None:
         d = self.docks
@@ -406,6 +424,9 @@ class MainWindow(QMainWindow):
         self._ensure_scene_panels()
         self.client = SimClient()
         self.client.start(self.scene_path)
+        self.opened_run = None
+        assert self.runs is not None
+        self.runs.set_folder(self.runs_folder())
         self.playback.sim_running = False
         self.playback.reset(None)
         self.timer.start(int(1000 / tokens.VIEWPORT_FPS))
@@ -413,6 +434,7 @@ class MainWindow(QMainWindow):
 
     def close_scene(self) -> None:
         self.timer.stop()
+        self.save_live_run()
         if self.client is not None:
             self.client.stop()
             self.client = None
@@ -450,6 +472,13 @@ class MainWindow(QMainWindow):
         )
         self.signal_tree = SignalTree()
         self.plots = PlotPanel(self._focus_dock("signals"))
+        self.runs = RunsPanel()
+        self.docks["runs"].setWidget(self.runs)
+        self.runs.open_run.connect(self.open_run)
+        self.runs.finding_clicked.connect(self.show_finding)
+        self.runs.report_requested.connect(self.write_report)
+        self.runs.compare_requested.connect(self.compare_runs)
+        self.runs.import_requested.connect(self.import_dialog)
         self.docks["scene_tree"].setWidget(self.scene_tree)
         self.docks["inspector"].setWidget(self.inspector)
         self.docks["timeline"].setWidget(self.timeline)
@@ -514,6 +543,8 @@ class MainWindow(QMainWindow):
             elif kind == proto.ROWS:
                 if self.history is not None:
                     self.history.append(ev["rows"])
+            elif kind == proto.REPLAYED:
+                self._on_replayed(ev)
             elif kind == proto.DRAWS:
                 self._live_draws = ev["draws"]  # the newest set (draws can change every tick)
                 if self.history is not None:
@@ -546,28 +577,34 @@ class MainWindow(QMainWindow):
             self.plots.refresh()
 
     def show_time(self) -> None:
-        """Show the timeline's moment (live or recorded) everywhere at once (VP-05, DA-02)."""
+        """Show the timeline's moment (live or recorded) everywhere at once (VP-05, DA-02).
+        The 3D view is updated and rendered only when that moment changed (D-061)."""
         pb, h = self.playback, self.history
         shown = pb.shown
-        frame = self._live_frame
-        trails = None
-        draws = self._live_draws
+        live = self._live_frame
         row = -1
         if h is not None and h.n:
             row = h.n - 1 if shown is None else min(shown, h.n - 1)
-            if shown is not None:
-                frame = h.frame(row, self._live_frame)
-                draws = h.draws_at(int(h.ticks[row]))
-            trails = h.trails(row, self._trail_seconds())
-        key = (shown, h.version if h is not None else 0, id(frame), id(draws))
-        if frame is not None and key != self._shown:
+        if shown is None or row < 0:
+            moment = None if live is None else ("live", live.tick, live.wall)
+        else:
+            moment = ("row", row)
+        draws = self._live_draws
+        if shown is not None and row >= 0:
+            assert h is not None
+            draws = h.draws_at(int(h.ticks[row]))
+        key = (moment, h.version if h is not None else 0, id(draws))
+        if moment is not None and key != self._shown:
             self._shown = key
+            frame = live if shown is None or row < 0 else h.frame(row, live)  # type: ignore[union-attr]
+            trails = h.trails(row, self._trail_seconds()) if h is not None and row >= 0 else None
             if draws is not self._drawn:
                 self._drawn = draws
                 self.sim_view.set_draws(draws)
             self.sim_view.update_frame(frame, trails)
             if self.inspector is not None:
                 self.inspector.update_frame(frame)
+            self.sim_view.render()
         if self.plots is not None:
             self.plots.set_cursor(pb.index if row >= 0 else None, pb.preview)
         if self.timeline is not None and h is not None and h.n:
@@ -576,10 +613,9 @@ class MainWindow(QMainWindow):
                 pb.last,
                 h.time_of(pb.index),
                 h.time_of(pb.last),
-                live=pb.live,
+                live=pb.live and not pb.recorded,
                 playing=pb.running,
             )
-        self.sim_view.render()
 
     def _trail_seconds(self) -> dict[str, float]:
         desc = self.client.description if self.client is not None else None
@@ -609,6 +645,10 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"{self.scene_path.name} loaded.", 3000)
         if self.playback.sim_running:
             self.client.play()  # Run was pressed while the scene loaded
+        self.opened_run = None
+        if self._pending_run is not None:  # a saved run waits for its scene
+            run, self._pending_run = self._pending_run, None
+            self.client.replay(run.path)
 
     def _on_stopped(self, code: int | None) -> None:
         """NF-10: the sim process died; the UI stays up and Run starts a new one."""
@@ -679,10 +719,195 @@ class MainWindow(QMainWindow):
             self.show_time()
 
     def stop(self) -> None:
-        """Stop and reset: the scene file is loaded again from the start."""
+        """Stop and reset: the scene file is loaded again from the start. A live run is saved
+        to the run folder first (RI-01) and scanned for the scenarios (RI-02)."""
         if self._has_scene():
             self.playback.pause()
+            self.save_live_run()
             self.client.reset()
+
+    # ----- run investigation (PRD §5.11) ---------------------------------------------
+    def runs_folder(self) -> Path:
+        override = os.environ.get(RUNS_ENV)
+        if override:
+            return Path(override)
+        base = self.scene_path.parent if self.scene_path is not None else Path.cwd()
+        return base / "runs"
+
+    def save_live_run(self) -> Path | None:
+        """Write the live recording to the run folder (not a replayed run, not an empty one)."""
+        h, desc = self.history, self.client.description if self.client is not None else None
+        if h is None or h.n < 2 or self.playback.recorded or desc is None:
+            return None
+        from simview.investigate.runs import Catalog, run_stem
+        from simview.io.export import write_table
+        from simview.runner.run import write_context
+
+        catalog = Catalog(self.runs_folder())
+        path = catalog.new_path(run_stem(desc.seed))
+        meta = {
+            "dt": desc.dt,
+            "seed": desc.seed,
+            "duration": h.time_of(h.n - 1) - h.time_of(0),
+            "source": "app",
+            "units": {k: u for k, u in h.units.items() if u},
+            "params": {},
+        }
+        write_table(h.table(meta), path)
+        scene_file = str(self.scene_path.resolve()) if self.scene_path is not None else None
+        write_context(path, scene_file=scene_file)
+        self.history = None  # saved once
+        if self.runs is not None:
+            self.runs.refresh(scan_runs=True)
+        self.statusBar().showMessage(f"Run saved to {path}", 4000)
+        return path
+
+    def open_run(self, run: Any) -> None:
+        """RI-01: show a saved or imported run. Its scene is loaded, then the sim process
+        replays the log, so the viewport, timeline, and plots show it."""
+        if not run.scene:
+            self.statusBar().showMessage(
+                f"{run.name} has no scene file to replay it with (import it with a scene).", 6000
+            )
+            return
+        scene = Path(run.scene)
+        self._pending_run = run
+        same = self.scene_path is not None and self.scene_path.resolve() == scene.resolve()
+        if same and self.client is not None and self.client.alive and self.history is not None:
+            self.save_live_run()
+            self._pending_run = None
+            self.client.replay(run.path)
+        else:
+            self.load_scene(scene)
+        self.statusBar().showMessage(f"Opening {run.name}…")
+
+    def _on_replayed(self, ev: dict[str, Any]) -> None:
+        layout = self.client.row_layout
+        if layout is None:
+            return
+        from simview.investigate.runs import read_info
+
+        self.history = History(layout, float(ev["dt"]))
+        self.history.append(ev["rows"])
+        self.playback.reset(self.history, recorded=True)
+        if self.history.n > 1:
+            self.playback.seek(0)
+        self._live_draws, self._drawn, self._shown = [], None, None
+        assert self.signal_tree is not None and self.plots is not None
+        self.signal_tree.load(layout)
+        self.plots.set_history(self.history)
+        self.opened_run = read_info(ev["path"])
+        self.setWindowTitle(f"SimView — {self.scene_path.name} — {self.opened_run.name}")
+        self.statusBar().showMessage(f"{self.opened_run.name}: {self.history.n} samples.", 4000)
+        if self._pending_finding is not None:
+            f, self._pending_finding = self._pending_finding, None
+            self.show_finding(f)
+        self.show_time()
+
+    def show_finding(self, finding: Any) -> None:
+        """RI-03: move the timeline, viewport, and plots to a finding's window (opening its
+        run first if another one is shown)."""
+        shown = self.opened_run
+        if shown is None or Path(shown.path).resolve() != Path(finding.run.path).resolve():
+            self._pending_finding = finding
+            self.open_run(finding.run)
+            return
+        h = self.history
+        if h is None or not h.n:
+            return
+        self.playback.seek(h.index_at(finding.start))
+        assert self.plots is not None
+        self.plots.show_window(list(finding.signals), finding.start, finding.end, h.dt)
+        self.show_time()
+
+    def write_report(self, runs: list[Any]) -> Path | None:
+        """RI-04: an HTML report of the runs, written to `<run folder>/reports/`."""
+        from simview.investigate.report import write_report
+        from simview.investigate.runs import RunData
+
+        assert self.runs is not None
+        data = [RunData(r) for r in runs]
+        paths = {r.path for r in runs}
+        results = [x for x in self.runs.results if x.run.path in paths]
+        name = runs[0].name if len(runs) == 1 else f"{runs[0].name}-and-{len(runs) - 1}-more"
+        out = write_report(data, results, self.runs_folder() / "reports" / f"{name}.html")
+        self._show_report(out)
+        return out
+
+    def compare_runs(self, run: Any, baseline: Any) -> Any:
+        """RI-05: compare two runs; divergences become findings and a report is written."""
+        from simview.investigate.compare import compare
+        from simview.investigate.report import write_report
+        from simview.investigate.runs import RunData
+
+        assert self.runs is not None
+        a, b = RunData(run), RunData(baseline)
+        c = compare(a, b, atol=COMPARE_ATOL, rtol=COMPARE_RTOL, scenarios=self.runs.scenarios)
+        self.runs.show_comparison_findings(c.findings)
+        results = [x for x in self.runs.results if x.run.path in (run.path, baseline.path)]
+        out = write_report(
+            [a, b],
+            results,
+            self.runs_folder() / "reports" / f"{run.name}-vs-{baseline.name}.html",
+            comparison=c,
+            title=f"{run.name} vs {baseline.name}",
+        )
+        self._show_report(out)
+        return c
+
+    def _show_report(self, path: Path) -> None:
+        self.statusBar().showMessage(f"Report written to {path}", 6000)
+        if self.open_reports:
+            from qtpy.QtCore import QUrl
+            from qtpy.QtGui import QDesktopServices
+
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def import_dialog(self) -> None:
+        """RI-06: pick a CSV or Parquet log, then map its columns onto the scene's signals."""
+        from qtpy.QtWidgets import QInputDialog
+
+        from simview.investigate.importer import read_columns
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Robot Log", "", "Logs (*.csv *.parquet)"
+        )
+        if not path:
+            return
+        columns = read_columns(path)
+        signals = self.history.signals if self.history is not None else ()
+        time_col = next((c for c in ("t", "time", "timestamp") if c in columns), columns[0])
+        guess = [f"{s} = {s}" for s in signals if s in columns]
+        text, ok = QInputDialog.getMultiLineText(
+            self,
+            "Map Columns",
+            f"Time column: {time_col} (seconds). One `signal = column` per line;\n"
+            "mapped columns drive the scene's entities when the run is replayed.",
+            "\n".join(guess) or "# ur5.shoulder_pan_joint.q = joint1",
+        )
+        if ok:
+            mapping = {}
+            for line in text.splitlines():
+                sig, sep, col = line.partition("=")
+                if sep and not line.lstrip().startswith("#"):
+                    mapping[sig.strip()] = col.strip()
+            self.import_log(path, mapping, time_col)
+
+    def import_log(self, path: str | Path, mapping: dict[str, str], time_column: str = "t") -> Any:
+        from simview.investigate.importer import import_log
+        from simview.investigate.runs import Catalog
+
+        info = import_log(
+            path,
+            Catalog(self.runs_folder()),
+            mapping=mapping,
+            time_column=time_column,
+            scene=self.scene_path,
+        )
+        if self.runs is not None:
+            self.runs.refresh(scan_runs=True)
+        self.statusBar().showMessage(f"Imported {info.rows} rows as {info.name}", 4000)
+        return info
 
     def export_data_dialog(self) -> None:
         """DA-07: every logged signal of the recorded run to CSV, Parquet, or .mat."""
