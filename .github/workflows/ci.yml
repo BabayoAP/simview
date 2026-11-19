@@ -1,8 +1,12 @@
 name: CI
 
+# Manual or PR-only (D-088): private-repo minutes are limited and macOS bills at 10x.
+# Run it from the Actions tab or `gh workflow run CI --ref <branch>` before asking to merge.
 on:
-  push:
+  workflow_dispatch:
   pull_request:
+    branches: [main]
+    paths-ignore: ["docs/**", "**.md"]
 
 jobs:
   lint:

@@ -1,10 +1,12 @@
 # SimView
 
-Read these before doing anything:
+Docs (large: grep or read the section you need, don't load whole files):
 
-1. [`docs/PRD.md`](docs/PRD.md): the source of truth. §0 holds the working rules.
-2. [`docs/PROGRESS.md`](docs/PROGRESS.md): which milestone is done, approved, or next.
-3. [`docs/DECISIONS.md`](docs/DECISIONS.md): ambiguities already resolved (D-001 onward).
+- `docs/PROGRESS.md`: read first; which milestone is done, approved, or next.
+- `docs/PRD.md`: source of truth. Read §0 (rules) and the current milestone's row in §10, then
+  only the requirement sections it names (grep the IDs, e.g. `BD-0`).
+- `docs/DECISIONS.md`: resolved ambiguities, D-001 onward. Grep for a topic or D-number; read
+  the tail to find the next free number.
 
 ## Working rules (PRD §0, short form)
 
@@ -29,6 +31,13 @@ SIMVIEW_GL=1 .venv/bin/pytest -m gl                           # OpenGL viewport 
 .venv/bin/ruff check . && .venv/bin/ruff format --check .    # lint (ruff 0.17.5, pinned in CI)
 ```
 
+Windows dev box: `.venv/Scripts/…` (Python 3.13, pip, no uv); tests with
+`QT_QPA_PLATFORM=offscreen SIMVIEW_OFFLINE=1 SIMVIEW_CACHE=$TEMP/svcache`; GL tests with
+`QT_QPA_PLATFORM=windows SIMVIEW_GL=1 -m gl`. Use `--cov=simview` (not `simview.core` alone).
+
+**Verify (definition of done):** lint clean + full test suite green locally (+ `-m gl` when the
+viewport changed). Iterate with `pytest tests/<area>` first; full suite once before commit.
+
 Stack: Python 3.11+ (dev on 3.12), PySide6 through `qtpy`, type hints everywhere.
-Repo: private `BabayoAP/simview`, MIT. CI runs 3 OSes × Python 3.11/3.12 plus lint, and gates
-`simview/core` coverage at ≥80%.
+Repo: private `BabayoAP/simview`, MIT. CI (3 OSes × Python 3.11/3.12, lint, `simview/core`
+coverage ≥80%) runs only on PRs to `main` or by hand (`gh workflow run CI --ref <branch>`), D-088.

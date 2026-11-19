@@ -641,3 +641,11 @@ subsystem, Ctrl+Shift+G ungroups one, Ctrl+A selects all. Double-click a subsyst
 breadcrumbs ("altitude › ctrl") and the Up button go back. Each Scope block gets a time plot in
 the plot panel when its scene loads, titled `<diagram>.<scope>` with all its inputs; reloading
 the scene replaces those plots (plots the user added are kept).
+
+## Process
+
+**D-088 — CI runs by hand or on PRs to main.** Every push ran 9 jobs, about 99 billed minutes
+(GitHub bills macOS at 10× and Windows at 2× on private repos), and November's 43 runs used up
+the account's Actions minutes. CI now triggers on `workflow_dispatch` and on pull requests to
+`main` (docs-only changes skipped). Branch work is verified locally; the 3-OS run happens once
+per milestone, before the owner merges.
