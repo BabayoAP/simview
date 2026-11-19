@@ -9,7 +9,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M2: Core sim engine | ✅ Merged to `main` 2026-11-18 | `main` | SE-01, SE-04, SE-05, SE-06, SE-07, SC-04 (+ NF-06, NF-09) |
 | M3: Physics + robots | ✅ Approved 2026-11-18 | `main` | SE-03, IO-01, TB-ROBOT (partial, D-023) |
 | M3b: Robotics depth (PRD 1.1) | ✅ Approved 2026-11-18 | `main` | RB-01–RB-12, TB-ROBOT (rest) |
-| M4: Viewport + IPC | Built, CI green, **awaiting approval** | `m4-viewport-ipc` | SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06 |
+| M4: Viewport + IPC | ✅ Approved 2026-11-18 | `main` | SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06 |
 | M5: Timeline + plots | Not started | | VP-05, DA-01–DA-04, DA-07, DS-09 |
 | M5b: Run investigation (PRD 1.2) | Not started | | RI-01–RI-06 |
 | M6–M10 | Not started | | see PRD §10 |
@@ -122,6 +122,5 @@ check the batched geometry, not the pixels).
 
 ## Next
 
-1. Owner reviews M4 (try `simview examples/ur5_ik_drag.py`, press Space, drag the blue target).
-2. Start **M5: Timeline + plots** (VP-05, DA-01–DA-04, DA-07, DS-09), then **M5b: Run
+1. Start **M5: Timeline + plots** (VP-05, DA-01–DA-04, DA-07, DS-09), then **M5b: Run
    investigation** (RI-01–RI-06).
