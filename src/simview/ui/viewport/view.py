@@ -121,6 +121,9 @@ class Viewport(QWidget):
         self.visual_actors: dict[str, Any] = {}
         self.target_widgets: list[Any] = []
         self.draw_actors: list[Any] = []
+        # The batched meshes behind draw_actors, in the same order. VTK may swap a mapper's
+        # input for its own (macOS draws wide lines another way), so this is the record.
+        self.draw_meshes: list[pv.PolyData] = []
         self.body_widget: Any = None
         self.dragging: str | None = None
         self.selection: str | None = None
@@ -505,6 +508,7 @@ class Viewport(QWidget):
         for a in self.draw_actors:
             p.remove_actor(a)
         self.draw_actors = []
+        self.draw_meshes = []
         g = model.draw_geometry(draws, self.theme)
         # Batched: one actor per line width / point size / label style, not one per draw, so a
         # controller that draws every tick stays cheap.
@@ -514,6 +518,7 @@ class Viewport(QWidget):
             lines = np.hstack([[2, 2 * i, 2 * i + 1] for i in range(len(items))])
             poly = pv.PolyData(pts, lines=lines)
             poly.cell_data["rgb"] = np.array([pv.Color(c).int_rgb for _a, _b, c, _w in items])
+            self.draw_meshes.append(poly)
             self.draw_actors.append(
                 p.add_mesh(poly, scalars="rgb", rgb=True, line_width=width, **common)
             )
@@ -526,12 +531,14 @@ class Viewport(QWidget):
                 arrows.append(arrow)
         if arrows:
             merged = arrows[0].merge(arrows[1:]) if len(arrows) > 1 else arrows[0]
+            self.draw_meshes.append(merged)
             self.draw_actors.append(
                 p.add_mesh(merged, scalars="rgb", rgb=True, pickable=False, reset_camera=False)
             )
         for size, items in _group(g.points, key=lambda d: d[2]).items():
             cloud = pv.PolyData(np.array([pt for pt, _c, _s in items], dtype=float))
             cloud.point_data["rgb"] = np.array([pv.Color(c).int_rgb for _p, c, _s in items])
+            self.draw_meshes.append(cloud)
             self.draw_actors.append(
                 p.add_mesh(
                     cloud,
@@ -543,6 +550,7 @@ class Viewport(QWidget):
                 )
             )
         for (color, size), items in _group(g.labels, key=lambda d: (d[2], d[3])).items():
+            self.draw_meshes.append(pv.PolyData(np.array([pt for pt, *_ in items], dtype=float)))
             self.draw_actors.append(
                 p.add_point_labels(
                     np.array([pt for pt, *_ in items], dtype=float),

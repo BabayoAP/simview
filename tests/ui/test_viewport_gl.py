@@ -190,15 +190,11 @@ def test_debug_draws(scene_view):
     vp.set_draws(draws)
     # batched: lines (incl. the frame axes, same width), arrows, points, labels
     assert len(vp.draw_actors) == 4
-    lines = vp.draw_actors[0].mapper.dataset
-    kinds = [type(getattr(x.mapper, "dataset", x.mapper)).__name__ for x in vp.draw_actors]
-    # one line + the 3 frame axes, in one batched mesh
-    assert lines.n_cells == 1 + 3, (
-        f"points={lines.n_points} cells={lines.n_cells} "
-        f"lines={getattr(lines, 'lines', None)} actors={kinds}"
-    )
+    assert len(vp.draw_meshes) == 4
+    assert vp.draw_meshes[0].n_cells == 1 + 3  # one line + the 3 frame axes, batched
+    assert vp.draw_meshes[2].n_points == 1 and vp.draw_meshes[3].n_points == 1
     vp.set_draws([])
-    assert vp.draw_actors == []
+    assert vp.draw_actors == [] and vp.draw_meshes == []
 
 
 def test_targets_get_a_gizmo_and_report_moves(qapp):
