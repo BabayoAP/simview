@@ -116,7 +116,9 @@ a gizmo too small to see, toolbar icons dimmed by their own backdrop, the HUD ov
 and the ViewCube still drawn in 2D. Debug draws are covered by the GL tests, not by eye.
 
 Not checked by me (needs a person at the mouse): how dragging the gizmo, orbiting, and zooming
-feel; the ViewCube's click-to-view animation; the light theme in the viewport; high-DPI scaling.
+feel; the ViewCube's click-to-view animation; the light theme in the viewport; high-DPI scaling;
+how debug-draw lines look on macOS (its OpenGL draws wide lines another way; the GL tests
+check the batched geometry, not the pixels).
 
 ## Next
 
