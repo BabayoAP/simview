@@ -12,7 +12,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M4: Viewport + IPC | ✅ Approved 2026-11-18 | `main` | SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06 |
 | M5: Timeline + plots | ✅ Approved 2026-11-19 | `main` | VP-05, DA-01–DA-04, DA-07, DS-09 |
 | M5b: Run investigation (PRD 1.2) | ✅ Approved 2026-11-19 | `main` | RI-01–RI-06 |
-| M6: Console + workspace | Built, CI green, **awaiting approval** | `m6-console-workspace` | SC-01–SC-05, IO-02, IO-04 |
+| M6: Console + workspace | ✅ Approved 2026-11-19 | `main` | SC-01–SC-05, IO-02, IO-04 |
 | M7–M10 | Not started | | see PRD §10 |
 
 ## M1: Skeleton + design system
@@ -236,8 +236,4 @@ console on a real display alongside the 3D view.
 
 ## Next
 
-1. Owner reviews M6: `simview examples/ur5_ik_drag.py`, then in the console try
-   `sim.state("ur5")`, `sim.data("tool_error")`, `sim.scene["ur5"].fk(np.zeros(6))`, and
-   `sim.params.max_step = 0.002` while dragging the target (the arm follows slower);
-   File > New Project, Save, reopen it from the start screen; File > Import Data on a CSV.
-2. Start **M7: Block editor** (BD-01–BD-08, DS-10).
+1. Start **M7: Block editor** (BD-01–BD-08, DS-10).
