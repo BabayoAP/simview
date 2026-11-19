@@ -20,6 +20,9 @@ COLORS: Final[dict[ThemeName, dict[str, str]]] = {
         "state.success": "#30D158",
         "state.warning": "#FFD60A",
         "state.error": "#FF453A",
+        "viewport.bg_top": "#2A2A2E",
+        "viewport.grid_major": "#5A5A60",
+        "viewport.grid_minor": "#3C3C42",
     },
     "light": {
         "bg.app": "#F5F5F7",
@@ -34,6 +37,9 @@ COLORS: Final[dict[ThemeName, dict[str, str]]] = {
         "state.success": "#1F7A35",
         "state.warning": "#B25000",
         "state.error": "#D70015",
+        "viewport.bg_top": "#FFFFFF",
+        "viewport.grid_major": "#A8A8B0",
+        "viewport.grid_minor": "#D8D8DE",
     },
 }
 
@@ -86,6 +92,26 @@ TEMPLATE_GLYPH: Final = 48
 ICON_SIZE_TOOLBAR: Final = 16
 ICON_SIZE_START: Final = 20
 ICON_STROKE: Final = 1.5
+
+# Viewport (§7.5).
+VIEWPORT_MSAA: Final = 4  # anti-aliasing samples
+VIEWPORT_FPS: Final = 60  # render and state-poll rate
+GRID_EXTENT: Final = 20.0  # m, half-width of the ground grid
+GRID_MAJOR: Final = 1.0  # m between major lines
+GRID_MINOR: Final = 0.1  # m between minor lines
+GRID_FADE: Final = (0.25, 1.0)  # fraction of the extent where lines start / finish fading out
+TRAIL_SECONDS: Final = 5.0  # default trail length (VP-04)
+TRAIL_WIDTH: Final = 2  # px
+OUTLINE_HOVER: Final = 1  # px, at HOVER_OPACITY
+OUTLINE_SELECT: Final = 2  # px
+HOVER_OPACITY: Final = 0.5
+FRAME_AXIS_LENGTH: Final = 0.1  # m, "show frames" RGB axes on every body
+GIZMO_SCALE: Final = 0.15  # translate/rotate gizmo size, fraction of the view (VP-10)
+TARGET_MARKER: Final = 0.03  # m, radius of a drag target's sphere
+ORBIT_DEG_PER_PX: Final = 0.4
+ZOOM_STEP: Final = 0.15  # fraction of the distance to the cursor point per wheel notch
+FLY_STEP: Final = 0.02  # fraction of the scene size per fly-mode key event
+DRAW_POINT_SIZE: Final = 8  # px, debug-draw default (VP-07)
 
 # Motion (ms).
 MOTION_FAST: Final = 150

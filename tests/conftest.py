@@ -27,12 +27,14 @@ def settings(tmp_path):
 
 
 def pytest_collection_modifyitems(config, items):
-    """Skip `network` tests when SIMVIEW_OFFLINE=1 (RB-11 downloads robots on first use)."""
+    """Skip `network` tests when SIMVIEW_OFFLINE=1 (RB-11 downloads robots on first use), and
+    `gl` tests unless SIMVIEW_GL=1 (they need a real OpenGL display)."""
     import os
 
-    if os.environ.get("SIMVIEW_OFFLINE") != "1":
-        return
-    skip = pytest.mark.skip(reason="SIMVIEW_OFFLINE=1")
+    offline = os.environ.get("SIMVIEW_OFFLINE") == "1"
+    gl = os.environ.get("SIMVIEW_GL") == "1"
     for item in items:
-        if "network" in item.keywords:
-            item.add_marker(skip)
+        if offline and "network" in item.keywords:
+            item.add_marker(pytest.mark.skip(reason="SIMVIEW_OFFLINE=1"))
+        if not gl and "gl" in item.keywords:
+            item.add_marker(pytest.mark.skip(reason="needs an OpenGL display: set SIMVIEW_GL=1"))

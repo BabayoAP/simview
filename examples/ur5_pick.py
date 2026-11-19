@@ -10,6 +10,7 @@ servos with gravity compensation (RB-05), a scene controller (RB-06), differenti
 import numpy as np
 
 import simview as sv
+from simview.core.scene import Context
 from simview.toolboxes import robotics as rb
 
 GRIPPER = """<mujoco model="gripper"><worldbody><body name="palm">
@@ -49,7 +50,7 @@ def goal(z: float) -> np.ndarray:
 
 
 @scene.controller(rate=100)
-def pick(t: float, state: sv.Scene, ctx: object) -> None:
+def pick(t: float, state: sv.Scene, ctx: Context) -> None:
     if t < 1.5:
         target = goal(0.15)  # above the cube
     elif t < 3.5:
