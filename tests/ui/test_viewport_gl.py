@@ -191,10 +191,11 @@ def test_debug_draws(scene_view):
     # batched: lines (incl. the frame axes, same width), arrows, points, labels
     assert len(vp.draw_actors) == 4
     lines = vp.draw_actors[0].mapper.dataset
+    kinds = [type(getattr(x.mapper, "dataset", x.mapper)).__name__ for x in vp.draw_actors]
     # one line + the 3 frame axes, in one batched mesh
     assert lines.n_cells == 1 + 3, (
-        f"{type(lines).__name__}: points={lines.n_points} cells={lines.n_cells} "
-        f"lines={getattr(lines, 'lines', None)} actors={[type(a.mapper.dataset).__name__ for a in vp.draw_actors]}"
+        f"points={lines.n_points} cells={lines.n_cells} "
+        f"lines={getattr(lines, 'lines', None)} actors={kinds}"
     )
     vp.set_draws([])
     assert vp.draw_actors == []
