@@ -11,7 +11,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M3b: Robotics depth (PRD 1.1) | ✅ Approved 2026-11-18 | `main` | RB-01–RB-12, TB-ROBOT (rest) |
 | M4: Viewport + IPC | ✅ Approved 2026-11-18 | `main` | SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06 |
 | M5: Timeline + plots | ✅ Approved 2026-11-19 | `main` | VP-05, DA-01–DA-04, DA-07, DS-09 |
-| M5b: Run investigation (PRD 1.2) | Built, **awaiting approval** | `m5b-run-investigation` | RI-01–RI-06 |
+| M5b: Run investigation (PRD 1.2) | ✅ Approved 2026-11-19 | `main` | RI-01–RI-06 |
 | M6–M10 | Not started | | see PRD §10 |
 
 ## M1: Skeleton + design system
@@ -201,7 +201,4 @@ captured on its own), the Import mapping dialog by hand, and a comparison report
 
 ## Next
 
-1. Owner reviews M5b (`simview examples/ur5_ik_drag.py`; open the Runs tab; add
-   `moving: abs(ur5.shoulder_pan_joint.v) > 0.05 for 0.02 s`; run, drag the target, Stop; click
-   the finding).
-2. Start **M6: Console + workspace** (SC-01–SC-05, IO-02, IO-04).
+1. Start **M6: Console + workspace** (SC-01–SC-05, IO-02, IO-04).
