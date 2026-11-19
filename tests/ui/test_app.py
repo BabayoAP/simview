@@ -34,4 +34,15 @@ def test_cli_entry_point_declared():
     from pathlib import Path
 
     data = tomllib.loads((Path(__file__).parents[2] / "pyproject.toml").read_text())
-    assert data["project"]["scripts"]["simview"] == "simview.ui.app:main"
+    # `simview` opens the app; `simview run ...` is the headless runner (D-011).
+    assert data["project"]["scripts"]["simview"] == "simview.cli:main"
+
+
+def test_cli_without_run_opens_app(monkeypatch):
+    import simview.ui.app
+    from simview.cli import main
+
+    seen = []
+    monkeypatch.setattr(simview.ui.app, "main", lambda argv: seen.append(argv) or 0)
+    assert main(["--theme", "light"]) == 0
+    assert seen == [["--theme", "light"]]
