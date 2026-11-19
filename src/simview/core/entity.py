@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from simview.core.integrators import INTEGRATORS, IntegratorName
+from simview.core.integrators import INTEGRATORS, IntegratorName, step
 
 
 class Entity:
@@ -41,6 +41,19 @@ class Entity:
 
     def derivative(self, t: float, x: np.ndarray, u: np.ndarray) -> np.ndarray:
         raise NotImplementedError
+
+    def validate(self) -> None:
+        """Called once when a run starts, after `reset`. Raises if the model is malformed."""
+        dx = np.asarray(self.derivative(0.0, self.x, self.u))
+        if dx.shape != self.x.shape:
+            raise ValueError(
+                f"{self.name}.derivative returned shape {dx.shape}, not {self.x.shape}"
+            )
+
+    def advance(self, t: float, dt: float) -> None:
+        """Move `x` forward one tick. Custom models integrate `derivative`; physics-backed
+        entities (MuJoCo, SE-03) override this to step their engine instead."""
+        self.x = step(self.integrator, self.derivative, t, self.x, self.u, dt)
 
     def reset(self) -> None:
         self.x = self.x0.copy()

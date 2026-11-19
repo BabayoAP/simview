@@ -87,3 +87,60 @@ same seed + same scene gives byte-identical files. Block signals join the log in
 or blocks, so they arrive in M4/M5. `run(..., headless=False)` raises `NotImplementedError` until
 then. `Run.to_pandas()` works if pandas is installed; pandas is not a dependency (not in §8),
 and `run["column"]` returns a NumPy array.
+
+## M3
+
+**D-017 — The bundled UR5.** There is no license-clean plain UR5 URDF to copy: MuJoCo Menagerie
+only has the UR5e (a different robot), and Universal Robots ships xacro. `toolboxes/robotics/
+assets/ur5/ur5.urdf` is Universal Robots' `ur_macro.xacro` expanded by hand with the UR5 values
+from `Universal_Robots_ROS2_Description` @ `0eb1a861` (BSD-3-Clause, `LICENSE` copied alongside,
+provenance in that folder's `README.md`). The 7 upstream collision STLs (about 250 KB) are
+bundled unmodified and used for visuals too, because MuJoCo can't load the upstream `.dae`
+visual meshes. Left out: `ros2_control` tags, `ft_frame`, safety-controller limits.
+
+**D-018 — How MuJoCo entities fit the M2 API.** `Entity` gains two methods, `validate()` (the
+shape check `Sim` used to do inline) and `advance(t, dt)` (integrate `derivative`, as before).
+`Sim` now calls these. MuJoCo robots override both; custom models behave exactly as in M2. No
+existing signature changed; this is additive, so it was not treated as a public-API change.
+
+**D-019 — Robot state and input.** A `Robot` is one entity whose `x` is `[qpos, qvel]`, logged as
+`<robot>.<joint>.q` / `.v` (multi-DOF joints: `.q0..`, `.v0..`). `x` is the source of truth: each
+tick it is copied into `MjData`, MuJoCo takes one `mj_step` with the scene's `dt`, and the result
+is copied back, so code that edits `x` (IK, a slider) takes effect on the next tick. `u` drives
+the actuators (`ctrl`) if the model has any, otherwise it is applied as joint forces
+(`qfrc_applied`): a URDF has no actuators, so `u` is joint torques. `integrator` doesn't apply.
+
+**D-020 — URDF import details.** Static links (`tool0`, `flange`, `base`) are kept as bodies
+(`fusestatic="false"`) so they work as kinematic frames. `<visual>` elements are dropped; MuJoCo
+simulates the collision geoms and the viewport (M4) will draw them. Mesh paths resolve relative to
+the URDF, and `package://<pkg>/<rel>` resolves to `<rel>` relative to the URDF (no ROS package
+lookup). Mesh formats MuJoCo can't read (anything but STL/OBJ/MSH) fail with a clear error instead
+of being converted. MJCF files load unchanged, so MuJoCo's rules apply, including angles in
+degrees unless the file sets `<compiler angle="radian"/>`. Bundled robots resolve by bare name:
+`scene.add_robot("ur5.urdf")` or `"ur5"` (an existing file path wins).
+
+**D-021 — The FK reference.** "FK matches a reference within 1e-6" uses Universal Robots'
+published UR5 DH parameters, which share nothing with the URDF or MuJoCo code path. The DH chain
+gives `base`→`tool0`; `base` is `base_link` rotated π about z. Measured worst error over 1,000
+random configurations: 6e-10. The Jacobian is MuJoCo's geometric Jacobian of the frame origin,
+rows `[linear; angular]` in the world frame, checked against finite differences.
+
+**D-022 — What the IK target means, and how IK meets it.** "Random reachable poses" are the FK of
+joint vectors drawn uniformly from [-π, π]^6, solved from one fixed seed configuration, with
+tolerances of 1e-6 m and 1e-6 rad. Plain damped least squares reached only about 80%: most
+failures were local minima, some were joints stopped at a limit, and the rest were targets near
+singularities. The solver therefore (a) scales damping with the error, (b) wraps joints whose
+range covers [-π, π] instead of clipping them, and (c) restarts from a seeded random configuration
+when 3 updates fail to cut the error by 20%. Every update and every restart counts toward the 50.
+Measured: 98.3–99.0% on three fresh sets of 1,000 targets, median 9 iterations, about 4 ms per
+solve. The test uses 300 targets and requires ≥95%. Results are deterministic (`seed=0` default).
+
+**D-023 — TB-ROBOT is partly built in M3.** The §10 deliverable for M3 is "FK/Jacobian/IK in the
+Robotics toolbox", so M3 builds FK, the Jacobian, DLS IK, and the SE(3) basics they need
+(`make`, `inv`, `rot_log`, `error`). The rest of the §9 Robotics row (trajectory generation,
+inverse dynamics, transform-tree utilities) is not built yet; see the M3 gate question in
+PROGRESS.md. `robot.fk(q)`, `robot.jacobian(q)`, and `robot.ik(T)` exist as methods for UC-3.
+
+**D-024 — Math names in lint.** Robotics code uses `T`, `R`, `J` for transforms, rotations, and
+Jacobians. `pyproject.toml` turns off ruff's N803/N806 naming rules for
+`src/simview/toolboxes/robotics/` and for tests, instead of scattering `noqa` comments.

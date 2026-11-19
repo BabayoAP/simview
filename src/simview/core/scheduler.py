@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 
-from simview.core.integrators import step
 from simview.core.rng import make_rng
 from simview.core.scene import Scene
 
@@ -27,9 +26,7 @@ class Sim:
         self.tick = 0
         for e in scene.entities.values():
             e.reset()
-            dx = np.asarray(e.derivative(0.0, e.x, e.u))
-            if dx.shape != e.x.shape:
-                raise ValueError(f"{e.name}.derivative returned shape {dx.shape}, not {e.x.shape}")
+            e.validate()
 
     @property
     def t(self) -> float:
@@ -39,5 +36,5 @@ class Sim:
     def step(self) -> None:
         t = self.t
         for e in self.scene.entities.values():
-            e.x = step(e.integrator, e.derivative, t, e.x, e.u, self.dt)
+            e.advance(t, self.dt)
         self.tick += 1

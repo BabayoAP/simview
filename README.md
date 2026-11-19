@@ -2,7 +2,7 @@
 
 Build, run, and visualize simulations of robots, vehicles, drones, and dynamic systems, in Python.
 
-> Status: M2 (core sim engine, headless runs). See [docs/PRD.md](docs/PRD.md) for the milestone plan and [docs/PROGRESS.md](docs/PROGRESS.md) for where things stand.
+> Status: M3 (MuJoCo physics, URDF/MJCF import, robot kinematics). See [docs/PRD.md](docs/PRD.md) for the milestone plan and [docs/PROGRESS.md](docs/PROGRESS.md) for where things stand.
 
 ## Install and run
 
@@ -37,6 +37,8 @@ QT_QPA_PLATFORM=offscreen .venv/bin/pytest
 
 ## Third-party assets
 
+- UR5 robot description and meshes: BSD-3-Clause, from Universal Robots'
+  `Universal_Robots_ROS2_Description` (`src/simview/toolboxes/robotics/assets/ur5/`).
 - Inter and JetBrains Mono fonts: SIL Open Font License (`src/simview/ui/assets/fonts/`).
 - Lucide icons v0.460.0: ISC license (`src/simview/ui/assets/icons/lucide/LICENSE`).
 

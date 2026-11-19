@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
 
 from simview.core.entity import Entity
 
 if TYPE_CHECKING:
     from simview.core.scheduler import Sim
+    from simview.physics.mujoco_world import Robot
 
 DT_MIN = 1e-4  # 0.1 ms (SE-01)
 DT_MAX = 1e-1  # 100 ms
@@ -32,6 +34,12 @@ class Scene:
             raise ValueError(f"an entity named {entity.name!r} already exists; pass name=")
         self.entities[entity.name] = entity
         return entity
+
+    def add_robot(self, path: str | Path, *, name: str | None = None) -> Robot:
+        """Add a MuJoCo-backed robot from a URDF/MJCF file or a bundled name like "ur5.urdf"."""
+        from simview.physics.mujoco_world import Robot  # MuJoCo loads only when a robot is used
+
+        return self.add_entity(Robot(path, name=name))
 
     def log(self, name: str, fn: LogFn) -> None:
         """Log a user-tagged channel each tick. `fn(sim)` returns a float (SE-06)."""
