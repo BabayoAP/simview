@@ -250,7 +250,9 @@ Done (engine, Qt-free, `simview/blocks/`):
 - Done-when ✅ (engine side): `examples/drone_altitude/` runs the same PID as a script and as a
   diagram; the flights match within 1e-9 (exactly, in fact; test `tests/blocks/test_pid_match.py`).
   Vertical drone dynamics stand in for the M8 quadrotor (D-081).
-- 365 tests (17 new in `tests/blocks/`).
+- 365 tests (17 new in `tests/blocks/`), lint clean with ruff 0.17.5, `core` + `blocks`
+  coverage 92%, all run locally on macOS. CI didn't run on 0e008fb: GitHub refused to start the
+  jobs (account billing / spending limit). Re-run CI once that's sorted.
 
 Left for M7 (the editor UI, `ui/blockeditor/`):
 - BD-01 + DS-10: the canvas (dot grid, 8 px snap, pan/zoom, rounded blocks with category
