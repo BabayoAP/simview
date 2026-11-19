@@ -12,7 +12,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M4: Viewport + IPC | ✅ Approved 2026-11-18 | `main` | SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06 |
 | M5: Timeline + plots | ✅ Approved 2026-11-19 | `main` | VP-05, DA-01–DA-04, DA-07, DS-09 |
 | M5b: Run investigation (PRD 1.2) | ✅ Approved 2026-11-19 | `main` | RI-01–RI-06 |
-| M6: Console + workspace | Built, **awaiting approval** | `m6-console-workspace` | SC-01–SC-05, IO-02, IO-04 |
+| M6: Console + workspace | Built, CI green, **awaiting approval** | `m6-console-workspace` | SC-01–SC-05, IO-02, IO-04 |
 | M7–M10 | Not started | | see PRD §10 |
 
 ## M1: Skeleton + design system
