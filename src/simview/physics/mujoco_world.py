@@ -14,17 +14,18 @@ from simview.physics.urdf import load_model, resolve
 if TYPE_CHECKING:
     from simview.toolboxes.robotics.kinematics import IKResult
 
+# Keyed by int: jnt_type holds np.int32, which doesn't hash like the enum on every platform.
 _QPOS_SIZE = {
-    mujoco.mjtJoint.mjJNT_FREE: 7,
-    mujoco.mjtJoint.mjJNT_BALL: 4,
-    mujoco.mjtJoint.mjJNT_SLIDE: 1,
-    mujoco.mjtJoint.mjJNT_HINGE: 1,
+    int(mujoco.mjtJoint.mjJNT_FREE): 7,
+    int(mujoco.mjtJoint.mjJNT_BALL): 4,
+    int(mujoco.mjtJoint.mjJNT_SLIDE): 1,
+    int(mujoco.mjtJoint.mjJNT_HINGE): 1,
 }
 _QVEL_SIZE = {
-    mujoco.mjtJoint.mjJNT_FREE: 6,
-    mujoco.mjtJoint.mjJNT_BALL: 3,
-    mujoco.mjtJoint.mjJNT_SLIDE: 1,
-    mujoco.mjtJoint.mjJNT_HINGE: 1,
+    int(mujoco.mjtJoint.mjJNT_FREE): 6,
+    int(mujoco.mjtJoint.mjJNT_BALL): 3,
+    int(mujoco.mjtJoint.mjJNT_SLIDE): 1,
+    int(mujoco.mjtJoint.mjJNT_HINGE): 1,
 }
 
 
@@ -50,8 +51,8 @@ class Robot(Entity):
         v_names: list[str] = []
         for j in range(m.njnt):
             jname = mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, j) or f"joint{j}"
-            q_names += _names(f"{jname}.q", _QPOS_SIZE[m.jnt_type[j]])
-            v_names += _names(f"{jname}.v", _QVEL_SIZE[m.jnt_type[j]])
+            q_names += _names(f"{jname}.q", _QPOS_SIZE[int(m.jnt_type[j])])
+            v_names += _names(f"{jname}.v", _QVEL_SIZE[int(m.jnt_type[j])])
         self.state_names = (*q_names, *v_names)
         self.joint_names = tuple(
             mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, j) or f"joint{j}" for j in range(m.njnt)
