@@ -17,6 +17,8 @@ from simview.ui.app import create_app  # noqa: E402
 def qapp():
     app = create_app([], "dark")
     yield app
+    from simview.ui.console.kernel import shutdown
+
     # Tear windows down while the QApplication is still alive. Leaving them to Python's
     # exit-time GC segfaults (Linux) or exits non-zero (Windows) after the tests pass.
     # Only unparented windows (a parented popup, like pyqtgraph's menus, goes with its owner),
@@ -28,6 +30,8 @@ def qapp():
                 widget.close()
                 widget.deleteLater()
         app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()
+    shutdown()  # the console's kernel, after its widgets are gone (M6)
     app.processEvents()
 
 

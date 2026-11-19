@@ -50,10 +50,11 @@ def kernel_manager() -> QtInProcessKernelManager:
 
 
 class ConsoleWidget(RichJupyterWidget):
-    """The console panel. `executed` fires after every cell, from any source (typed, the
+    """The console panel. `namespace_changed` fires after every cell, from any source (typed, the
     editor's Run, an import), so the workspace browser can refresh."""
 
-    executed = Signal()
+    # Not `executed`: qtconsole already has that signal (with the reply message).
+    namespace_changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent=parent)
@@ -66,8 +67,9 @@ class ConsoleWidget(RichJupyterWidget):
         self.kernel_manager = km
         self.kernel_client = km.client()
         self.kernel_client.start_channels()
+        self.destroyed.connect(lambda _o=None, kc=self.kernel_client: kc.stop_channels())
         self.set_theme(theme.current_theme())
-        self._hook: Callable[[], None] = self.executed.emit
+        self._hook: Callable[[], None] = self.namespace_changed.emit
         self.shell.events.register("post_execute", self._hook)
         self.destroyed.connect(lambda _o=None, hook=self._hook: _unregister(hook))
 
@@ -92,7 +94,7 @@ class ConsoleWidget(RichJupyterWidget):
     def push(self, values: dict[str, Any], hidden: bool = False) -> None:
         """Put variables in the console's namespace (hidden ones stay out of the workspace)."""
         self.shell.push(values, interactive=not hidden)
-        self.executed.emit()
+        self.namespace_changed.emit()
 
     def run_code(self, source: str) -> None:
         """Run code as if typed at the prompt (shown in the console with its output)."""
@@ -114,6 +116,15 @@ class ConsoleWidget(RichJupyterWidget):
     def text(self) -> str:
         """Everything shown so far (tests)."""
         return self._control.toPlainText()
+
+
+def shutdown() -> None:
+    """Stop the kernel while Qt is still up (at quit, and after the tests): its Qt objects
+    must not be left to the interpreter's exit-time garbage collection."""
+    if kernel_manager.cache_info().currsize:
+        km = kernel_manager()
+        km.shutdown_kernel()
+        kernel_manager.cache_clear()
 
 
 def _unregister(hook: Callable[[], None]) -> None:

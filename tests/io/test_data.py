@@ -9,7 +9,7 @@ from simview.io.data import load_csv, load_data, load_mat, variable_name
 
 def test_csv_becomes_a_record_array(tmp_path):
     p = tmp_path / "log.csv"
-    p.write_text("﻿t,x,label,\n0,1.5,a,\n0.5,,b,9\n\n")
+    p.write_text("\ufefft,x,label,\n0,1.5,a,\n0.5,,b,9\n\n", encoding="utf-8")
     data = load_csv(p)
     assert data.dtype.names == ("t", "x", "label", "col3")
     np.testing.assert_array_equal(data["t"], [0.0, 0.5])

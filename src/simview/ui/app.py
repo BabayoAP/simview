@@ -86,4 +86,7 @@ def main(argv: list[str] | None = None) -> int:
         controller.open_window(UNTITLED, args.scene.name).load_scene(args.scene)
     else:
         controller.start.show()
+    from simview.ui.console.kernel import shutdown
+
+    app.aboutToQuit.connect(shutdown)
     return app.exec()

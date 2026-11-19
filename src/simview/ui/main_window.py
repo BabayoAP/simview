@@ -740,9 +740,12 @@ class MainWindow(QMainWindow):
     # ----- console, editor, workspace (SC-01-SC-03, SC-05, IO-02) -------------------
     def _connect_console(self) -> None:
         self.console.push({"sim": self.sim_handle}, hidden=True)
-        self.console.executed.connect(self.refresh_workspace)
+        self.console.namespace_changed.connect(self.refresh_workspace)
         self.editor.run_code.connect(self._run_in_console)
-        self.editor.run_file.connect(lambda path: self._run_in_console(f"%run -i {path!r}"))
+        # Forward slashes and double quotes: %run splits its arguments like a shell would.
+        self.editor.run_file.connect(
+            lambda path: self._run_in_console(f'%run -i "{Path(path).as_posix()}"')
+        )
         self.workspace.open_array.connect(self.open_array)
 
     def _run_in_console(self, code: str) -> None:
