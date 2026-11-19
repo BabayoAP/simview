@@ -8,7 +8,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M1: Skeleton + design system | ✅ Approved 2026-11-18 | `main` | DS-01, DS-02, DS-03, DS-07, DS-08, DS-14 |
 | M2: Core sim engine | ✅ Merged to `main` 2026-11-18 | `main` | SE-01, SE-04, SE-05, SE-06, SE-07, SC-04 (+ NF-06, NF-09) |
 | M3: Physics + robots | ✅ Approved 2026-11-18 | `main` | SE-03, IO-01, TB-ROBOT (partial, D-023) |
-| M3b: Robotics depth (PRD 1.1) | Built, tests green locally, **awaiting approval** | `m3b-robotics-depth` | RB-01–RB-12, TB-ROBOT (rest) |
+| M3b: Robotics depth (PRD 1.1) | Built, CI green, **awaiting approval** | `m3b-robotics-depth` | RB-01–RB-12, TB-ROBOT (rest) |
 | M4–M10 | Not started | | see PRD §10 |
 
 ## M1: Skeleton + design system
