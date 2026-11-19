@@ -72,7 +72,7 @@ def _limits(robot: Robot) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     m = robot.model
     lo = np.where(m.jnt_limited, m.jnt_range[:, 0], -np.inf)
     hi = np.where(m.jnt_limited, m.jnt_range[:, 1], np.inf)
-    hinge = m.jnt_type == mujoco.mjtJoint.mjJNT_HINGE
+    hinge = m.jnt_type == int(mujoco.mjtJoint.mjJNT_HINGE)
     return lo, hi, hinge & (lo <= -np.pi) & (hi >= np.pi)
 
 
