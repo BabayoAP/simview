@@ -71,10 +71,16 @@ class Controller:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="simview")
     parser.add_argument("--theme", choices=["dark", "light"], help="override the saved theme")
+    parser.add_argument("scene", nargs="?", type=Path, help="a scene.py file to open directly")
     args, qt_args = parser.parse_known_args(argv)
     settings = default_settings()
     chosen: ThemeName = args.theme or str(settings.value("theme", "dark"))  # type: ignore[assignment]
     app = create_app([sys.argv[0], *qt_args], chosen)
     controller = Controller(settings)
-    controller.start.show()
+    if args.scene is not None:
+        if not args.scene.is_file():
+            parser.error(f"no scene file at {args.scene}")
+        controller.open_window(UNTITLED, args.scene.name).load_scene(args.scene)
+    else:
+        controller.start.show()
     return app.exec()

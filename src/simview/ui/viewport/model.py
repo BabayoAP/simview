@@ -75,6 +75,23 @@ def geom_mesh(g: Geom) -> pv.PolyData:
     raise ValueError(f"cannot draw geom kind {g.kind!r}")
 
 
+def load_visual(path: str, scale: float = 1.0) -> pv.PolyData:
+    """A visual mesh file as one surface (GLB/glTF scenes are merged), scaled (VP-01).
+
+    glTF is +Y-up; SimView is +Z-up, so GLB/glTF files are turned +90 deg about x."""
+    data = pv.read(path)
+    if isinstance(data, pv.MultiBlock):
+        data = data.combine(merge_points=False).extract_surface(algorithm="dataset_surface")
+    mesh = (
+        data if isinstance(data, pv.PolyData) else data.extract_surface(algorithm="dataset_surface")
+    )
+    if path.lower().endswith((".glb", ".gltf")):
+        mesh = mesh.rotate_x(90.0, inplace=False)
+    if scale != 1.0:
+        mesh = mesh.scale(scale, inplace=False)
+    return mesh
+
+
 def geom_local(g: Geom) -> np.ndarray:
     return pose_matrix(np.array(g.pos), np.array(g.quat))
 

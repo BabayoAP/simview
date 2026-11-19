@@ -46,3 +46,31 @@ def test_cli_without_run_opens_app(monkeypatch):
     monkeypatch.setattr(simview.ui.app, "main", lambda argv: seen.append(argv) or 0)
     assert main(["--theme", "light"]) == 0
     assert seen == [["--theme", "light"]]
+
+
+def test_scene_argument_opens_it_directly(monkeypatch, settings, qapp):
+    """`simview scene.py` skips the start screen and loads the scene (M4)."""
+    from pathlib import Path
+
+    from simview.ui import app as app_mod
+
+    opened = {}
+
+    def fake_exec(self=None):
+        window = opened["controller"].window
+        opened["path"] = window.scene_path
+        window.close_scene()
+        return 0
+
+    class Probe(app_mod.Controller):
+        def __init__(self, s):
+            super().__init__(settings)
+            opened["controller"] = self
+
+    monkeypatch.setattr(app_mod, "Controller", Probe)
+    monkeypatch.setattr(type(qapp), "exec", fake_exec)
+    scene = Path(__file__).parents[2] / "examples" / "ur5_ik_drag.py"
+    assert app_mod.main([str(scene)]) == 0
+    assert opened["path"] == scene
+    assert not opened["controller"].start.isVisible()
+    opened["controller"].window.close()

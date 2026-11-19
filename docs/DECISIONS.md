@@ -248,3 +248,74 @@ signals and time window, and offers an MCP server. It has no simulation. The own
   later), applied to SimView's own runs and to imported robot logs, as milestone M5b after M5 (it
   needs the timeline and plots). Natural-language Q&A and an MCP server are `[Future]` for now.
 - Lesson recorded: confirm a product's identity from its own site before building on it.
+
+## M4
+
+**D-038 — The sim process.** `ipc/client.py` starts the sim in a `spawn`ed process (the same on
+every OS, and no forked Qt state). State goes through one shared-memory float64 buffer guarded by a
+sequence counter (a seqlock: the reader retries instead of seeing a half-written frame). Commands,
+events, debug draws, and tracebacks go through a ZeroMQ `PAIR` socket on 127.0.0.1 as pickled
+dicts (both ends are SimView on one machine). The sim publishes state at most every 1/120 s.
+Stop resets by loading the scene file again. A user-code exception (scene file or controller)
+arrives as a traceback in the console and pauses the run, with the process still up; `print`
+output is forwarded line by line. A killed or crashed sim is reported once with its exit code, and
+Run starts a new one (NF-10).
+
+**D-039 — Pacing and its numbers (SE-10, NF-04).** Speeds 0.1×, 0.25×, 0.5×, 1×, 2×, 5×, 10×, and
+Max (no pacing). The reported RTF averages over 0.5 s of wall time. Measured on the development
+machine: 2.000 s of sim time per 2.001 s of wall time at 1×; about 10× at Max for the UR5 pick
+scene; state latency median 4.8 ms, p99 about 10 ms (NF-04: 20 ms). The test checks the median.
+
+**D-040 — VP-05 is split between M4 and M5.** VP-05 is in both milestones' lists. M4 builds play,
+pause, step forward, and the speeds; step back and the scrub slider need recorded history, which
+is M5's timeline. Step back (`,`) is not bound yet.
+
+**D-041 — The HUD and heads-up toolbar are drawn inside VTK.** Qt widgets laid over the native
+OpenGL surface don't composite reliably across platforms, so the toolbar is VTK textured buttons
+(Lucide icons rendered by Qt) on a translucent `bg.elevated` backdrop, and the HUD is a VTK text
+actor in JetBrains Mono. This keeps §7.5's look. VTK buttons have no tooltips. The "view presets"
+button cycles iso, front, right, top (the ViewCube and keys 1/3/7/0 pick one directly). The
+"sensor visuals" toggle waits for sensors (M8). The HUD text refreshes at 10 Hz: VTK's corner
+annotation re-fitted its font on every change and cost about 25 ms a frame.
+
+**D-042 — Navigation.** SimView's style (§7.5) is the only preset for now: right- or middle-drag
+orbits around the point under the cursor, Ctrl+right or Shift+middle pans, the wheel zooms toward
+the cursor (keeping that point under it, in perspective and orthographic), left-click selects.
+The other presets (SolidWorks, Onshape, Blender, MATLAB) need the Settings dialog and come with it.
+Fly mode is a toolbar toggle: W/S, A/D, Q/E move the camera; in fly mode A strafes instead of
+framing all. 2D mode (Tab) is top-down orthographic; right-drag pans there and the ViewCube is off.
+The world coordinates under the cursor show as a HUD line rather than a tooltip. VTK's own key
+handling never sees keys (its defaults close the window on q/e).
+
+**D-043 — Selection and gizmos (VP-06, VP-10, DS-06).** Clicking a robot's link selects the robot.
+Selection and hover are one state shared by the viewport, scene tree, and inspector; plots join in
+M5. Outlines are silhouettes in a second renderer layer, so they show through other geometry. Drag
+targets (`scene.add_target`) always show the translate/rotate gizmo; a selected free body gets one
+too, and is placed (at rest) where it is released. Robots get no gizmo: their bases are fixed and
+their joints follow IK targets. PyVista's gizmo switches the interactor to its trackball style on
+release; SimView puts its own style back.
+
+**D-044 — Testing the OpenGL viewport.** Tests that need a GL context are marked `gl` and run only
+with `SIMVIEW_GL=1`. CI runs them on Linux (Mesa under `xvfb`) and macOS. GitHub's Windows runners
+only offer OpenGL 1.1, below VTK's 3.2, so Windows GL runs on the development machine (GTX 1050 Ti,
+all `gl` tests pass). Without GL (headless runs, broken drivers) the main window uses a stand-in
+view: the sim, panels, and console still work and nothing crashes. Everything else in the viewport
+(geometry, matrices, trails, draws, grid, navigation math) is OpenGL-free and tested everywhere.
+
+**D-045 — Scene API added for the viewport.** `ctx.draw.line/arrow/point/text/frame` with
+`persist=` (VP-07; recorded headless too). `scene.add_target(name, pose)` (VP-10). `Entity.position()`
+places markers and trails (VP-04): states named x/y/z by default, a free body's position, a robot's
+default frame. `scene.trail(entity, seconds, color)` (VP-04). `scene.add_visual(name, path, pose)`
+shows an STL, OBJ, PLY, or GLB/glTF mesh without physics (VP-01; MuJoCo can't load GLB); glTF is
++Y-up, so it is turned +90° about x. World axes sit at the origin and toggle with the grid. Mesh
+geoms render with subtle feature edges (shaded+edges, §7.5).
+
+**D-046 — Frame rate.** Measured on the development machine at 1000×700 with 4× MSAA: 62 fps for
+both the pick scene and the IK-drag scene (whose debug draws change every tick). Debug draws are
+coalesced to the newest set per UI frame and batched into a few actors. NF-01's target scene
+(20 entities and a 50k-point cloud) is checked in M10.
+
+**D-047 — Panels and launch.** The Console tab now shows sim output and tracebacks; the IPython
+console replaces it in M6. The Inspector lists every state live, and a robot's joints as sliders
+that follow the simulation (UC-3). `simview scene.py` opens a scene directly. New dependencies:
+`pyvista`, `pyvistaqt`, `pyzmq` (all in PRD §8.1).

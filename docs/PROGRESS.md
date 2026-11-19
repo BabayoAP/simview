@@ -9,7 +9,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M2: Core sim engine | ✅ Merged to `main` 2026-11-18 | `main` | SE-01, SE-04, SE-05, SE-06, SE-07, SC-04 (+ NF-06, NF-09) |
 | M3: Physics + robots | ✅ Approved 2026-11-18 | `main` | SE-03, IO-01, TB-ROBOT (partial, D-023) |
 | M3b: Robotics depth (PRD 1.1) | ✅ Approved 2026-11-18 | `main` | RB-01–RB-12, TB-ROBOT (rest) |
-| M4: Viewport + IPC | In progress | `m4-viewport-ipc` | SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06 |
+| M4: Viewport + IPC | Built, CI green, **awaiting approval** | `m4-viewport-ipc` | SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06 |
 | M5: Timeline + plots | Not started | | VP-05, DA-01–DA-04, DA-07, DS-09 |
 | M5b: Run investigation (PRD 1.2) | Not started | | RI-01–RI-06 |
 | M6–M10 | Not started | | see PRD §10 |
@@ -81,8 +81,45 @@ TB-ROBOT. (1.1 credited this to the wrong "Alloy"; corrected in PRD 1.2, D-037.)
 - 197 tests (59 new; network tests download about 70 MB once), `simview/core` coverage 99%.
   Decisions D-025..D-036.
 
+## M4: Viewport + IPC
+
+- `simview/ipc/`: the sim runs in its own process (SE-02): seqlocked shared-memory state, ZeroMQ
+  commands and events, real-time pacing at 0.1×–10× or flat out (SE-10), tracebacks and `print`
+  output in the console, crash reporting and restart (NF-10) (D-038, D-039).
+- `simview/ui/viewport/`: PyVista viewport. `model.py` and `navigation.py` are OpenGL-free
+  (geometry, matrices, grid, trails, draws, camera math); `view.py` draws them, with SimView's own
+  mouse and key handling, picking, outlines on an overlay layer, ViewCube, triad, heads-up toolbar,
+  HUD, scale bar, and gizmos (D-041, D-042, D-043).
+- Main window: Open Scene (or `simview scene.py`), run/pause/step/stop, speed, live RTF, scene tree,
+  inspector with joint sliders, console; one selection and hover shared by all (DS-06) (D-047).
+- Scene API: `ctx.draw`, `scene.add_target`, `scene.add_visual`, `scene.trail`, `Entity.position()`
+  (D-045). `examples/ur5_ik_drag.py` is the UC-3 drag demo.
+- Done-when: the UC-3 IK drag demo works live ✅ (test: with the sim running, a target move the
+  gizmo emits brings the tool within 5 mm; GL test: the gizmo reports its moves); killing the sim
+  process doesn't crash the UI ✅ (test: kill, UI reports it, Run restarts).
+- Requirement IDs: SE-02 ✅ SE-10 ✅ VP-01 ✅ VP-02 ✅ VP-03 ✅ VP-04 ✅ VP-05 ◐ (play, pause, step
+  forward, speeds; scrubbing and step back are M5, D-040) VP-06 ✅ VP-07 ✅ VP-10 ✅ NF-04 ✅
+  (median 4.8 ms) NF-10 ✅ DS-04 ✅ DS-05 ✅ (SimView preset; other presets with Settings, D-042)
+  DS-06 ✅ (viewport, tree, inspector; plots in M5).
+- Measured: 62 fps at 1000×700 with 4× MSAA on a GTX 1050 Ti (D-046).
+- 250 tests (53 new), 11 of them `gl` tests that need a display (D-044); `simview/core`
+  coverage 90%. CI adds a GL job on Linux and macOS.
+
+### Manual checks (visual, §0 rule 5)
+
+Checked from rendered screenshots on the development machine: robot meshes with feature edges,
+fading grid, per-body frames, triad, ViewCube, heads-up toolbar (icons in `text.secondary`,
+active toggles in `accent`), HUD in the lower right, accent selection outline visible through the
+arm, target gizmo arrows and rings, 2D top view with the scale bar and the ViewCube hidden.
+Screenshots caught and fixed: the camera re-framing to the whole grid, the HUD over the ViewCube,
+a gizmo too small to see, toolbar icons dimmed by their own backdrop, the HUD over the scale bar,
+and the ViewCube still drawn in 2D. Debug draws are covered by the GL tests, not by eye.
+
+Not checked by me (needs a person at the mouse): how dragging the gizmo, orbiting, and zooming
+feel; the ViewCube's click-to-view animation; the light theme in the viewport; high-DPI scaling.
+
 ## Next
 
-1. Owner reviews M3b.
-2. Start **M4: Viewport + IPC** (SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06).
-   `ctx.draw` for controllers arrives here (D-033).
+1. Owner reviews M4 (try `simview examples/ur5_ik_drag.py`, press Space, drag the blue target).
+2. Start **M5: Timeline + plots** (VP-05, DA-01–DA-04, DA-07, DS-09), then **M5b: Run
+   investigation** (RI-01–RI-06).

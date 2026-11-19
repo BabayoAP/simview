@@ -38,10 +38,23 @@ FONT_FILE = (
 )
 HOVER_PICK_PERIOD = 1 / 30  # s between hover picks
 HUD_RATE = 10  # Hz, HUD text refresh
+HUD_ABOVE_SCALE = 0.1  # normalized height of the HUD's bottom edge when the scale bar shows
 CLICK_SLOP = 4  # px a press may move and still count as a click
 TOOLBAR_ICON = 20  # px, heads-up toolbar icon size (2x for high DPI)
 DISPLAY_MODES = ("shaded+edges", "shaded", "wireframe")
 PRESET_CYCLE = ("iso", "front", "right", "top")
+
+
+def _gizmo_scale(actor: Any) -> float:
+    """PyVista sizes the gizmo relative to the actor; this makes it GIZMO_SIZE metres long."""
+    return tokens.GIZMO_SIZE / max(float(actor.GetLength()), 1e-6)
+
+
+def _group(items: list[Any], key: Any) -> dict[Any, list[Any]]:
+    out: dict[Any, list[Any]] = {}
+    for item in items:
+        out.setdefault(key(item), []).append(item)
+    return out
 
 
 def _icon_image(name: str, color: str, size: int) -> vtk.vtkImageData:
@@ -105,6 +118,7 @@ class Viewport(QWidget):
         self.trail_actors: dict[str, Any] = {}
         self.frame_actors: list[Any] = []
         self.target_actors: dict[str, Any] = {}
+        self.visual_actors: dict[str, Any] = {}
         self.target_widgets: list[Any] = []
         self.draw_actors: list[Any] = []
         self.body_widget: Any = None
@@ -150,6 +164,16 @@ class Viewport(QWidget):
             name="grid",
         )
         self.grid_actor.SetVisibility(self.options["grid"])
+        self.world_axes = p.add_mesh(  # VP-01: world axes at the origin, shown with the grid
+            self._axes_poly(tokens.WORLD_AXIS_LENGTH),
+            scalars="rgb",
+            rgb=True,
+            line_width=3,
+            pickable=False,
+            lighting=False,
+            name="world_axes",
+        )
+        self.world_axes.SetVisibility(self.options["grid"])
         p.add_axes(line_width=2)  # triad, bottom left (DS-04)
         self.view_cube = p.add_camera_orientation_widget()  # ViewCube, top right (DS-04)
         # HUD (§7.5): a plain text actor. VTK's corner annotation re-fits its font on every
@@ -214,18 +238,8 @@ class Viewport(QWidget):
         off = tokens.color(self.theme, "text.secondary")
         on = tokens.color(self.theme, "accent")
         size = TOOLBAR_ICON * 2
-        for key, icon_name, toggle in specs:
-            rep = vtk.vtkTexturedButtonRepresentation2D()
-            rep.SetNumberOfStates(2 if toggle else 1)
-            rep.SetButtonTexture(0, _icon_image(icon_name, off, size))
-            if toggle:
-                rep.SetButtonTexture(1, _icon_image(icon_name, on, size))
-            widget = vtk.vtkButtonWidget()
-            widget.SetInteractor(self.plotter.iren.interactor)
-            widget.SetRepresentation(rep)
-            widget.AddObserver("StateChangedEvent", lambda w, _e, k=key: self._toolbar(k, w))
-            widget.On()
-            self.buttons[key] = widget
+        # The backdrop goes in first: 2D props draw in the order they are added, and a
+        # translucent backdrop added after the buttons would dim their icons.
         self.toolbar_bg = vtk.vtkActor2D()
         pts = vtk.vtkPoints()
         pts.SetNumberOfPoints(4)
@@ -241,7 +255,18 @@ class Viewport(QWidget):
         self.toolbar_bg.GetProperty().SetColor(*bg)
         self.toolbar_bg.GetProperty().SetOpacity(0.85)  # translucent bg.elevated (§7.5)
         self.renderer.AddViewProp(self.toolbar_bg)
-        self.toolbar_bg.SetLayerNumber(0)
+        for key, icon_name, toggle in specs:
+            rep = vtk.vtkTexturedButtonRepresentation2D()
+            rep.SetNumberOfStates(2 if toggle else 1)
+            rep.SetButtonTexture(0, _icon_image(icon_name, off, size))
+            if toggle:
+                rep.SetButtonTexture(1, _icon_image(icon_name, on, size))
+            widget = vtk.vtkButtonWidget()
+            widget.SetInteractor(self.plotter.iren.interactor)
+            widget.SetRepresentation(rep)
+            widget.AddObserver("StateChangedEvent", lambda w, _e, k=key: self._toolbar(k, w))
+            widget.On()
+            self.buttons[key] = widget
         self._sync_toggle_states()
         self.plotter.render_window.AddObserver(
             "WindowResizeEvent", lambda *_: self._place_toolbar()
@@ -349,8 +374,9 @@ class Viewport(QWidget):
                 self.marker_actors[e.name] = actor
                 self.actor_entity[id(actor)] = e.name
                 self.entity_actors.setdefault(e.name, []).append(actor)
-            if e.has_marker:
-                self.trails[e.name] = model.Trail()
+            seconds = desc.trails.get(e.name, (tokens.TRAIL_SECONDS, None))[0]
+            if e.has_marker and seconds > 0:
+                self.trails[e.name] = model.Trail(seconds=seconds)
         for b in range(len(desc.body_names)):
             axes = self._axes_poly(tokens.FRAME_AXIS_LENGTH)
             a = p.add_mesh(
@@ -360,6 +386,14 @@ class Viewport(QWidget):
             self.frame_actors.append(a)
         for name, pose in desc.targets.items():
             self._add_target(name, pose)
+        for name, (path, pose, scale, color) in desc.visuals.items():
+            mesh = model.load_visual(path, scale)
+            kw = {} if color is None else {"color": model.resolve_color(color, self.theme)}
+            if color is None and "RGB" not in mesh.point_data and "RGBA" not in mesh.point_data:
+                kw = {"color": tokens.color(self.theme, "text.secondary")}
+            actor = p.add_mesh(mesh, pickable=False, name=f"visual:{name}", **kw)
+            actor.user_matrix = np.array(pose)
+            self.visual_actors[name] = actor
         for a in self.geom_actors + list(self.marker_actors.values()):
             a.SetPickable(True)
         if keep_cam is not None:
@@ -398,7 +432,7 @@ class Viewport(QWidget):
 
         widget = self.plotter.add_affine_transform_widget(
             actor,
-            scale=tokens.GIZMO_SCALE,
+            scale=_gizmo_scale(actor),
             always_visible=True,
             interact_callback=lambda m: moved(m),
             release_callback=lambda m: moved(m, True),
@@ -447,9 +481,14 @@ class Viewport(QWidget):
                     actor.SetVisibility(False)
                 continue
             if actor is None:
+                custom = self.desc.trails.get(name, (0.0, None))[1] if self.desc else None
                 actor = self.plotter.add_mesh(
                     line,
-                    color=palette[k % len(palette)],
+                    color=(
+                        model.resolve_color(custom, self.theme)
+                        if custom is not None
+                        else palette[k % len(palette)]
+                    ),
                     line_width=tokens.TRAIL_WIDTH,
                     pickable=False,
                     name=f"trail:{name}",
@@ -467,38 +506,53 @@ class Viewport(QWidget):
             p.remove_actor(a)
         self.draw_actors = []
         g = model.draw_geometry(draws, self.theme)
-        for a, b, color, width in g.lines:
+        # Batched: one actor per line width / point size / label style, not one per draw, so a
+        # controller that draws every tick stays cheap.
+        common = {"pickable": False, "lighting": False, "reset_camera": False}
+        for width, items in _group(g.lines, key=lambda d: d[3]).items():
+            pts = np.array([q for a, b, _c, _w in items for q in (a, b)], dtype=float)
+            lines = np.hstack([[2, 2 * i, 2 * i + 1] for i in range(len(items))])
+            poly = pv.PolyData(pts, lines=lines)
+            poly.cell_data["rgb"] = np.array([pv.Color(c).int_rgb for _a, _b, c, _w in items])
+            self.draw_actors.append(
+                p.add_mesh(poly, scalars="rgb", rgb=True, line_width=width, **common)
+            )
+        arrows = []
+        for a, b, color in g.arrows:
+            length = float(np.linalg.norm(b - a))
+            if length > 0:
+                arrow = pv.Arrow(start=a, direction=b - a, scale=length)
+                arrow.point_data["rgb"] = np.tile(pv.Color(color).int_rgb, (arrow.n_points, 1))
+                arrows.append(arrow)
+        if arrows:
+            merged = arrows[0].merge(arrows[1:]) if len(arrows) > 1 else arrows[0]
+            self.draw_actors.append(
+                p.add_mesh(merged, scalars="rgb", rgb=True, pickable=False, reset_camera=False)
+            )
+        for size, items in _group(g.points, key=lambda d: d[2]).items():
+            cloud = pv.PolyData(np.array([pt for pt, _c, _s in items], dtype=float))
+            cloud.point_data["rgb"] = np.array([pv.Color(c).int_rgb for _p, c, _s in items])
             self.draw_actors.append(
                 p.add_mesh(
-                    pv.Line(a, b), color=color, line_width=width, pickable=False, lighting=False
-                )
-            )
-        for a, b, color in g.arrows:
-            v = b - a
-            length = float(np.linalg.norm(v))
-            if length > 0:
-                arrow = pv.Arrow(start=a, direction=v, scale=length)
-                self.draw_actors.append(p.add_mesh(arrow, color=color, pickable=False))
-        for pt, color, size in g.points:
-            self.draw_actors.append(
-                p.add_points(
-                    np.array([pt]),
-                    color=color,
+                    cloud,
+                    scalars="rgb",
+                    rgb=True,
                     point_size=size,
                     render_points_as_spheres=True,
-                    pickable=False,
+                    **common,
                 )
             )
-        for pt, text, color, size in g.labels:
+        for (color, size), items in _group(g.labels, key=lambda d: (d[2], d[3])).items():
             self.draw_actors.append(
                 p.add_point_labels(
-                    np.array([pt]),
-                    [text],
+                    np.array([pt for pt, *_ in items], dtype=float),
+                    [text for _p, text, *_ in items],
                     text_color=color,
                     font_size=int(size),
                     shape=None,
                     show_points=False,
                     always_visible=True,
+                    reset_camera=False,
                 )
             )
 
@@ -585,7 +639,7 @@ class Viewport(QWidget):
 
         self.body_widget = self.plotter.add_affine_transform_widget(
             actor,
-            scale=tokens.GIZMO_SCALE,
+            scale=_gizmo_scale(actor),
             always_visible=True,
             interact_callback=interact,
             release_callback=release,
@@ -633,6 +687,7 @@ class Viewport(QWidget):
         self.options[key] = value
         if key == "grid":
             self.grid_actor.SetVisibility(value)
+            self.world_axes.SetVisibility(value)
         elif key == "frames":
             for a in self.frame_actors:
                 a.SetVisibility(value)
@@ -674,6 +729,8 @@ class Viewport(QWidget):
         self.renderer.ResetCameraClippingRange()
         self.plotter.camera_set = True  # stop PyVista re-framing on every add_mesh (grid included)
         self.scale_bar.SetVisibility(cam.parallel)  # scale bar in orthographic and 2D (§7.5)
+        # The HUD sits above the scale bar's labels while the bar is shown.
+        self.hud.GetPositionCoordinate().SetValue(0.99, HUD_ABOVE_SCALE if cam.parallel else 0.01)
 
     def _bounds(self, actors: list[Any]) -> tuple[np.ndarray, float]:
         pts = []
@@ -720,10 +777,10 @@ class Viewport(QWidget):
             if on
             else nav.preset("iso", center, radius * 1.1, replace(cam, parallel=False))
         )
-        if on:
-            self.view_cube.Off()
-        else:
-            self.view_cube.On()
+        # The ViewCube would rotate the locked 2D view: switch it off and hide it (turning the
+        # widget off alone leaves it drawn).
+        self.view_cube.SetEnabled(not on)
+        self.view_cube.GetRepresentation().SetVisibility(not on)
         self._sync_toggle_states()
 
     # ------------------------------------------------------------------ input

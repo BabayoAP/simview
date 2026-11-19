@@ -144,6 +144,7 @@ def test_presets_2d_and_fly_keys(scene_view):
 
     vp.key("", Qt.Key.Key_Tab)  # 2D mode
     assert vp.options["2d"] and vp.camera().parallel and vp.scale_bar.GetVisibility()
+    assert not vp.view_cube.GetEnabled() and not vp.view_cube.GetRepresentation().GetVisibility()
     fwd = vp.camera().forward
     mouse(vp, "RightButtonPressEvent", 400, 300)  # right-drag pans in 2D: no rotation
     mouse(vp, "MouseMoveEvent", 480, 340)
@@ -151,6 +152,7 @@ def test_presets_2d_and_fly_keys(scene_view):
     np.testing.assert_allclose(vp.camera().forward, fwd, atol=1e-9)
     vp.key("", Qt.Key.Key_Tab)
     assert not vp.options["2d"] and not vp.camera().parallel
+    assert vp.view_cube.GetEnabled() and vp.view_cube.GetRepresentation().GetVisibility()
     vp.set_option("fly", True)
     p0 = vp.camera().position
     assert vp.key("w")
@@ -186,7 +188,9 @@ def test_debug_draws(scene_view):
         ("frame", ((0, 0, 0), (0.1, 0, 0), (0, 0.1, 0), (0, 0, 0.1)), "frame", 0.1, ""),
     ]
     vp.set_draws(draws)
-    assert len(vp.draw_actors) == 1 + 1 + 1 + 1 + 3
+    # batched: lines (incl. the frame axes, same width), arrows, points, labels
+    assert len(vp.draw_actors) == 4
+    assert vp.draw_actors[0].mapper.GetInput().GetNumberOfCells() == 1 + 3
     vp.set_draws([])
     assert vp.draw_actors == []
 
@@ -229,3 +233,36 @@ def test_theme_switch(scene_view):
     vp.set_theme("light")
     assert vp.renderer.GetBackground() != dark_bg
     assert len(vp.geom_actors) == 11  # scene rebuilt in the new theme
+
+
+def test_visuals_world_axes_and_trail_style(qapp, tmp_path):
+    """VP-01 (GLB visual, world axes) and VP-04 (trail length and color)."""
+    import simview as sv
+    from simview.ui.viewport import model
+    from simview.ui.viewport.view import Viewport
+    from tests.ui.test_visuals import write_glb
+
+    glb = tmp_path / "tri.glb"
+    write_glb(glb, [[0, 0, 0], [1, 0, 0], [0, 1, 0]])
+    scene = sv.Scene()
+    scene.add_ground()
+    scene.add_visual("sign", glb, scale=0.5)
+    scene.add_box("box", (0.1, 0.1, 0.1), (0, 0, 1), mass=1.0)
+    scene.trail("box", seconds=0.05, color="state.warning")
+    sim = Sim(scene)
+    vp = Viewport("dark")
+    vp.resize(800, 600)
+    vp.show()
+    vp.load(describe(scene))
+    assert "sign" in vp.visual_actors and vp.world_axes.GetVisibility()
+    vp.set_option("grid", False)
+    assert not vp.world_axes.GetVisibility()
+    for _ in range(100):
+        sim.step()
+        vp.update_frame(frame_of(sim))
+    trail = vp.trails["box"]
+    assert trail.seconds == 0.05 and trail.points[-1][0] - trail.points[0][0] <= 0.05
+    want = model.hex_rgb(tokens.color("dark", "state.warning")) / 255.0
+    np.testing.assert_allclose(vp.trail_actors["box"].GetProperty().GetColor(), want, atol=1e-6)
+    vp.close_viewport()
+    vp.close()

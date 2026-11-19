@@ -59,6 +59,25 @@ class Target:
 
 
 @dataclass
+class Visual:
+    """A mesh file (STL, OBJ, or GLB/glTF) shown in the viewport but not simulated (VP-01)."""
+
+    name: str
+    path: Path
+    pose: np.ndarray
+    scale: float
+    color: str | None
+
+
+@dataclass
+class TrailStyle:
+    """VP-04: how long (seconds of sim time) and in what color an entity's trail is drawn."""
+
+    seconds: float
+    color: str | None
+
+
+@dataclass
 class Controller:
     fn: ControllerFn
     rate: float | None  # Hz; None runs every tick
@@ -75,6 +94,8 @@ class Scene:
         self.controllers: list[Controller] = []
         self.world: World | None = None  # the shared MuJoCo world, made on first use (RB-01)
         self.targets: dict[str, Target] = {}
+        self.visuals: dict[str, Visual] = {}  # VP-01: mesh files drawn but not simulated
+        self.trails: dict[str, TrailStyle] = {}  # VP-04: per-entity trail settings
 
     def physics(self) -> World:
         """The scene's MuJoCo world (created on first use, so ODE-only scenes never load it)."""
@@ -246,6 +267,39 @@ class Scene:
         return self._add_shape(
             "capsule", name, [diameter, length], pos, quat, mass, static, friction, rgba
         )
+
+    def add_visual(
+        self,
+        name: str,
+        path: str | Path,
+        pose: Sequence[Sequence[float]] | None = None,
+        *,
+        scale: float = 1.0,
+        color: str | None = None,
+    ) -> Visual:
+        """Show a mesh file (STL, OBJ, GLB/glTF) at a 4x4 `pose`; it has no physics (VP-01).
+
+        For a simulated mesh, put it in a robot's URDF/MJCF instead. `color` is a theme token
+        or color name; without one, GLB files keep their own colors."""
+        import numpy as np
+
+        file = Path(path).resolve()
+        if not file.is_file():
+            raise FileNotFoundError(f"no mesh file at {path}")
+        if file.suffix.lower() not in (".stl", ".obj", ".glb", ".gltf", ".ply"):
+            raise ValueError(f"{file.name}: visuals can be STL, OBJ, GLB/glTF, or PLY")
+        if name in self.visuals:
+            raise ValueError(f"a visual named {name!r} already exists")
+        matrix = np.eye(4) if pose is None else np.array(pose, dtype=np.float64)
+        visual = Visual(name, file, matrix, float(scale), color)
+        self.visuals[name] = visual
+        return visual
+
+    def trail(self, entity: str, seconds: float = 5.0, color: str | None = None) -> None:
+        """VP-04: set an entity's trail length (seconds of sim time; 0 hides it) and color."""
+        if seconds < 0:
+            raise ValueError("trail length must be >= 0 seconds")
+        self.trails[entity] = TrailStyle(float(seconds), color)
 
     def add_target(self, name: str, pose: Sequence[Sequence[float]] | None = None) -> Target:
         """A draggable pose (VP-10): `pose` is a 4x4 transform (default: identity at the origin)."""

@@ -446,12 +446,13 @@ class MainWindow(QMainWindow):
         client = self.client
         if client is None:
             return
+        draws = None
         for ev in client.poll():
             kind = ev["event"]
             if kind == proto.READY:
                 self._on_ready(ev["description"])
             elif kind == proto.DRAWS:
-                self.sim_view.set_draws(ev["draws"])
+                draws = ev["draws"]  # only the newest set is drawn (draws can change every tick)
             elif kind == proto.LOG:
                 assert self.console is not None
                 token = "state.error" if ev["stream"] == "stderr" else "text.primary"
@@ -466,6 +467,8 @@ class MainWindow(QMainWindow):
                 )
             elif kind == proto.STOPPED:
                 self._on_stopped(ev.get("exitcode"))
+        if draws is not None:
+            self.sim_view.set_draws(draws)
         frame = client.frame()
         if frame is not None:
             self.sim_view.update_frame(frame)

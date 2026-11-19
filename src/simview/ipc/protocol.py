@@ -62,6 +62,10 @@ class Description:
     body_names: list[str] = field(default_factory=list)
     targets: dict[str, np.ndarray] = field(default_factory=dict)
     has_ground: bool = False
+    # VP-01 visuals: name -> (file path, 4x4 pose, scale, color or None)
+    visuals: dict[str, tuple[str, np.ndarray, float, str | None]] = field(default_factory=dict)
+    # VP-04 trail settings: entity -> (seconds, color or None)
+    trails: dict[str, tuple[float, str | None]] = field(default_factory=dict)
 
     def entity_of_body(self, body: int) -> str | None:
         for e in self.entities:
@@ -83,7 +87,14 @@ _GEOM_KINDS = {
 
 def describe(scene: Scene) -> Description:
     """Plain-data description of everything the viewport draws."""
-    desc = Description(dt=scene.dt, targets={k: v.pose.copy() for k, v in scene.targets.items()})
+    desc = Description(
+        dt=scene.dt,
+        targets={k: v.pose.copy() for k, v in scene.targets.items()},
+        visuals={
+            k: (str(v.path), v.pose.copy(), v.scale, v.color) for k, v in scene.visuals.items()
+        },
+        trails={k: (v.seconds, v.color) for k, v in scene.trails.items()},
+    )
     world = scene.world
     if world is not None:
         m = world.model

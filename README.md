@@ -2,7 +2,7 @@
 
 Build, run, and visualize simulations of robots, vehicles, drones, and dynamic systems, in Python.
 
-> Status: M3b (robotics depth: shared MuJoCo world, servos, controllers, robot library). See [docs/PRD.md](docs/PRD.md) for the milestone plan and [docs/PROGRESS.md](docs/PROGRESS.md) for where things stand.
+> Status: M4 (3D viewport, sim process, live controls). See [docs/PRD.md](docs/PRD.md) for the milestone plan and [docs/PROGRESS.md](docs/PROGRESS.md) for where things stand.
 
 ## Install and run
 
@@ -34,6 +34,17 @@ run["ball.h"]  # NumPy array, one value per tick
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 QT_QPA_PLATFORM=offscreen .venv/bin/pytest
 ```
+
+## Open a scene in the app
+
+```bash
+.venv/bin/simview examples/ur5_ik_drag.py   # press Space to run, drag the blue target
+```
+
+The simulation runs in its own process, so a crash in scene code shows a traceback in the
+console instead of taking the window down. Viewport: right-drag orbits around the point under
+the cursor, Ctrl+right-drag pans, the wheel zooms toward the cursor, click selects, `F`/`A` frame
+the selection or everything, `1` `3` `7` `0` pick front/right/top/iso, and `Tab` toggles 2D.
 
 ## Robots
 
