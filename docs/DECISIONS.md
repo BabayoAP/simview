@@ -55,3 +55,35 @@ project dependency until M6.
 **D-010 — pytest-cov.** Added as a dev dependency (approved 2026-11-18) for NF-09
 (≥80% line coverage of `simview/core`). CI reports coverage now; the 80% gate will be enforced
 on `simview/core` once M2 creates it.
+
+## M2
+
+**D-011 — One `simview` command.** SE-05 asks for `simview run scene.py --headless`, so the
+console script now points at `simview.cli:main`. It sends `run ...` to the headless runner and
+everything else to `simview.ui.app.main` unchanged, so `simview [--theme light]` behaves as in M1.
+The headless path never imports Qt.
+
+**D-012 — Ground contact without events.** Events (`on_collision`, SE-11) are v1, so the
+bouncing ball's ground is a stiff spring-damper (k = 1e4 N/m, c = 20 N·s/m) inside its
+`derivative`. That gives a restitution of about 0.73 and under 4 cm of penetration at dt = 1 ms.
+
+**D-013 — RK45 is adaptive inside each tick.** SE-01 fixes the tick, so `rk45` runs SciPy's
+`solve_ivp(method="RK45")` across each `dt` with `rtol=1e-8`, `atol=1e-10`, and the input `u`
+held constant over the tick. Euler and RK4 take one step per tick.
+
+**D-014 — Scene files.** A `scene.py` defines a module-level `scene = simview.Scene(...)`;
+`load_scene` runs it with `runpy`. The CLI's `--duration` defaults to 10 s, `--seed` overrides
+the scene's seed, and the default log path is `runs/<YYYYmmdd-HHMMSS>-seed<seed>.parquet` in the
+working directory (with a numeric suffix if taken). The GUI will build the same `Scene` object.
+
+**D-015 — Log layout.** One row per tick, including tick 0: `t`, `tick`, then
+`<entity>.<state>` for every entity state, then tagged channels from `scene.log(name, fn)`,
+where `fn(sim)` returns a float. `t` is `tick * dt` (no summed drift). Run settings go in the
+Parquet schema metadata under `simview` as sorted-key JSON, with no timestamps, so
+same seed + same scene gives byte-identical files. Block signals join the log in M5.
+
+**D-016 — Left for later milestones.** `scene.controller(rate=...)` and `ctx.draw` from the
+§8.3 sketch, live (non-headless) runs, and the 60 Hz render clock in SE-01 need the viewport
+or blocks, so they arrive in M4/M5. `run(..., headless=False)` raises `NotImplementedError` until
+then. `Run.to_pandas()` works if pandas is installed; pandas is not a dependency (not in §8),
+and `run["column"]` returns a NumPy array.

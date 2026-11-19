@@ -2,7 +2,7 @@
 
 Build, run, and visualize simulations of robots, vehicles, drones, and dynamic systems, in Python.
 
-> Status: M1 (skeleton + design system). See the PRD for the milestone plan.
+> Status: M2 (core sim engine, headless runs). See the PRD for the milestone plan.
 
 ## Install and run
 
@@ -10,6 +10,22 @@ Build, run, and visualize simulations of robots, vehicles, drones, and dynamic s
 uv venv --python 3.12 .venv
 uv pip install -e ".[dev]"
 .venv/bin/simview            # or: simview --theme light
+```
+
+## Headless runs
+
+```bash
+.venv/bin/simview run examples/bouncing_ball.py --headless --duration 5
+```
+
+Or from Python:
+
+```python
+import simview as sv
+from simview.runner.headless import load_scene
+
+run = sv.run(load_scene("examples/bouncing_ball.py"), duration=5.0)
+run["ball.h"]  # NumPy array, one value per tick
 ```
 
 ## Develop
