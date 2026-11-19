@@ -2,7 +2,7 @@
 
 Build, run, and visualize simulations of robots, vehicles, drones, and dynamic systems, in Python.
 
-> Status: M3 (MuJoCo physics, URDF/MJCF import, robot kinematics). See [docs/PRD.md](docs/PRD.md) for the milestone plan and [docs/PROGRESS.md](docs/PROGRESS.md) for where things stand.
+> Status: M3b (robotics depth: shared MuJoCo world, servos, controllers, robot library). See [docs/PRD.md](docs/PRD.md) for the milestone plan and [docs/PROGRESS.md](docs/PROGRESS.md) for where things stand.
 
 ## Install and run
 
@@ -35,8 +35,31 @@ run["ball.h"]  # NumPy array, one value per tick
 QT_QPA_PLATFORM=offscreen .venv/bin/pytest
 ```
 
+## Robots
+
+```bash
+.venv/bin/simview run examples/ur5_pick.py --headless --duration 5.5   # UR5 picks up a cube
+```
+
+```python
+import simview as sv
+from simview.toolboxes import robotics as rb
+
+scene = sv.Scene(dt=2e-3)
+scene.add_ground()
+arm = scene.add_robot("ur5", servos="position", gravity_compensation=True)
+panda = scene.add_robot("panda", pos=(1.0, 0, 0))  # MuJoCo Menagerie, downloaded on first use
+scene.add_box("cube", (0.04, 0.04, 0.04), (0.45, 0.15, 0.02), mass=0.1)
+```
+
+Library robots (Franka Panda, UR10e, Robotiq 2F-85) are downloaded once from MuJoCo Menagerie
+into `~/.cache/simview` (or `$SIMVIEW_CACHE`), each with its license. Set `SIMVIEW_OFFLINE=1` to
+skip the tests that download them.
+
 ## Third-party assets
 
+- Library robots (downloaded, not bundled): Panda Apache-2.0, UR10e BSD-3-Clause, Robotiq
+  2F-85 BSD-2-Clause, from MuJoCo Menagerie at a pinned commit.
 - UR5 robot description and meshes: BSD-3-Clause, from Universal Robots'
   `Universal_Robots_ROS2_Description` (`src/simview/toolboxes/robotics/assets/ur5/`).
 - Inter and JetBrains Mono fonts: SIL Open Font License (`src/simview/ui/assets/fonts/`).

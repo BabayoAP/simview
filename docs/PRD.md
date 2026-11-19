@@ -1,6 +1,13 @@
 # SimView — Product Requirements Document
 
-**Version:** 1.0 · **Status:** Ready to build · **Owner:** Harrison
+**Version:** 1.1 · **Status:** Ready to build · **Owner:** Harrison
+
+**Changes in 1.1 (2026-11-18, approved by the owner):** added §5.10 Robotics depth (RB), the
+robotics functionality of the Alloy physics engine (Argon Robotics, Apache-2.0,
+`github.com/argonrobotics-ai/alloy`) rebuilt natively on SimView's MuJoCo backend. Alloy itself is not a
+dependency: it doesn't run on Windows and pins its own MuJoCo. Its other features are listed as
+`[Future]` candidates. Added milestone **M3b: Robotics depth** before M4, which also finishes TB-ROBOT.
+Updated §8.3, §8.4, §9, §10, and §12 to match.
 
 ---
 
@@ -269,6 +276,36 @@ Tag meanings:
 | IO-02 | Import CSV and `.mat` data (via `scipy.io`) into the workspace. | MVP |
 | IO-03 | Import ROS1/ROS2 bags (via the `rosbags` library) as time-series data and as playback in the viewport. | v1 |
 | IO-04 | Save and load a whole project (`.svproj` folder): scenes, diagrams, scripts, and run logs. | MVP |
+
+### 5.10 Robotics depth (RB)
+
+The robotics functionality of Alloy (see the 1.1 note at the top), rebuilt on SimView's MuJoCo backend
+so it runs on all three operating systems. Alloy's names and units are followed where they don't clash
+with SimView's (sizes are full edge lengths in metres, angles in radians).
+
+| ID | Requirement | Tag |
+|---|---|---|
+| RB-01 | One shared MuJoCo world per scene: every robot and object in a scene is compiled into a single model, so they collide and touch. Custom ODE entities still run beside it. | MVP |
+| RB-02 | Scene objects: `scene.add_ground()`, and `add_box` / `add_sphere` / `add_cylinder` / `add_capsule` (full sizes in metres) that are free (with `mass=`) or `static=True`, with position, orientation, `friction=`, and color. A free object is an entity whose pose and velocity are logged. | MVP |
+| RB-03 | Robot placement and composition: `add_robot(..., pos=, quat=)` places the base; MJCF can be given as a string; a robot or tool can be mounted on another robot's body (e.g. a gripper on an arm's flange). | MVP |
+| RB-04 | Names: world names are `<robot>/<joint or body>`; robot methods take bare names; logs keep `<robot>.<joint>.q` / `.v`. | MVP |
+| RB-05 | Joint driving: position or velocity servos (generated for URDF robots with `kp`/`kv`, or taken from the MJCF), `robot.set_targets({joint: value})` clamped to the joint range with a warning, linear ramps to a target over a duration, raw `robot.set_controls({actuator: value})`, and body state readers (position, orientation, velocity). | MVP |
+| RB-06 | Controllers in scenes: `@scene.controller(rate=...)` runs a function at a fixed rate during a run (the §8.3 API, without `ctx.draw`, which arrives with the viewport in M4). | MVP |
+| RB-07 | Robot controllers: joint PID / impedance with gravity compensation, differential (task-space) IK control, and operational-space control. | MVP |
+| RB-08 | Robot dynamics through MuJoCo: inverse dynamics, gravity torques, and the joint-space mass matrix. | MVP |
+| RB-09 | Joint trajectories: cubic, quintic, and trapezoidal-velocity profiles for one or many joints. | MVP |
+| RB-10 | Transform tree: list a robot's frames, their parent tree, and the transform between any two frames. | MVP |
+| RB-11 | Robot library: robots from MuJoCo Menagerie (at least Franka Panda with hand, UR10e, Robotiq 2F-85) are downloaded on first use at a pinned commit into a user cache, with each robot's license kept beside it, and load by name (`add_robot("panda")`). | MVP |
+| RB-12 | Grasping by friction: a gripper closes on an object and lifts it, with friction set per object. | MVP |
+| RB-20 | Parallel worlds and per-world randomization of starts, poses, and gains (domain randomization). | Future |
+| RB-21 | Deformables: cloth and soft bodies. | Future |
+| RB-22 | Liquids (SPH) and granular material (MPM). | Future |
+| RB-23 | Rods and cables that bend, twist, and yield; objects that cut or tear; joints with yielding springs; heat. | Future |
+| RB-24 | Object library with physical property cards (e.g. YCB / Google Scanned Objects) and text-to-scene composition. | Future |
+| RB-25 | Simulation health checks (penetration, NaN, energy) with a report. | Future |
+| RB-26 | System identification from recorded robot data. | Future |
+| RB-27 | Imitation-learning demonstration recording (HDF5) and LeRobot datasets. | Future |
+| RB-28 | USD import, an MCP server, Isaac Lab bridges, and humanoid / quadruped locomotion examples. | Future |
 
 ---
 
@@ -549,6 +586,16 @@ def guidance(t, state, ctx):
 
 scene.log("miss_distance", lambda s: ...)               # custom logged channel
 
+# Robotics depth (§5.10): one shared MuJoCo world, objects, servos, controllers
+scene.add_ground()
+cube = scene.add_box("cube", size=(0.04, 0.04, 0.04), pos=(0.5, 0, 0.02), mass=0.1)
+panda = scene.add_robot("panda", pos=(0, 0, 0))          # fetched from Menagerie on first use
+ctl = sv.robotics.DifferentialIK(panda, frame="hand")
+
+@scene.controller(rate=100)
+def reach(t, state, ctx):
+    panda.set_targets(ctl.step(target_pose, dt=ctx.dt))
+
 run = sv.run(scene, duration=20.0, headless=False)      # returns a Run handle
 df = run.to_pandas()                                    # all logged signals
 sv.analysis.step_info(df["altitude"], t=df["t"])
@@ -563,7 +610,7 @@ simview/
   docs/  DECISIONS.md  ARCHITECTURE.md
   src/simview/
     core/        scene.py entity.py scheduler.py integrators.py rng.py logger.py
-    physics/     mujoco_world.py urdf.py
+    physics/     mujoco_world.py urdf.py world.py
     blocks/      graph.py compiler.py library/ (one file per block family)
     sensors/     imu.py gps.py seeker.py lidar.py camera.py
     ipc/         server.py client.py shm.py protocol.py
@@ -573,6 +620,7 @@ simview/
     io/          mat.py csv.py project.py
     ui/          app.py main_window.py viewport/ plots/ blockeditor/ console/ inspector/ timeline/
     toolboxes/   robotics/ controls/ aero/ rl/   (built-ins, registered via entry points)
+                 robotics/: kinematics.py se3.py dynamics.py trajectory.py controllers.py frames.py library.py
     templates/   av_scenario/ drone_intercept/ ur5_ik/ drone_landing/
   tests/         mirrors src/simview/
   examples/      one script per flagship use case
@@ -584,7 +632,7 @@ simview/
 
 | Toolbox | Contents | Tag |
 |---|---|---|
-| **Robotics** | URDF loading helpers, FK, geometric Jacobian, damped-least-squares IK, trajectory generation (cubic/quintic, trapezoidal velocity), inverse dynamics through MuJoCo, transform tree utilities, and SE(3) helpers (`sv.robotics.se3`). | MVP |
+| **Robotics** | URDF loading helpers, FK, geometric Jacobian, damped-least-squares IK, trajectory generation (cubic/quintic, trapezoidal velocity), inverse dynamics through MuJoCo, transform tree utilities, and SE(3) helpers (`sv.robotics.se3`). Since 1.1 also the §5.10 robotics depth: joint servos and targets, joint PID / impedance, differential-IK and operational-space control, and the Menagerie robot library. | MVP |
 | **Controls** | PID with anti-windup, transfer function / state-space blocks, `step_info`, `bode`, LQR (`scipy.linalg.solve_continuous_are`), and discretization (`c2d`). | MVP |
 | **Aerospace / Guidance** | 6-DOF quadrotor model, point-mass interceptor, Proportional Navigation and Augmented PN, seeker model, EKF and UKF blocks, and engagement metrics (miss distance, time-to-go). | MVP |
 | **Vehicles** | Kinematic bicycle model, pure pursuit, Stanley controller, road/lane scene primitives, scripted NPC agents. | MVP |
@@ -617,6 +665,7 @@ Stop for review after each one.
 | 1 | **M1: Skeleton + design system** | Repo, `pyproject`, CI (ruff + pytest on 3 OSes via GitHub Actions), theme tokens → QSS, bundled fonts and icons, the default layout with empty docked panels, a start screen, and a command palette shell. | DS-01–DS-03, DS-07, DS-08, DS-14 | `simview` launches into the start screen with the dark and light themes. The hex-color lint and contrast tests pass. CI is green. |
 | 2–3 | **M2: Core sim engine** | Scene, entities, fixed-step scheduler, RK4/RK45, seeded RNG, Parquet logger, headless runner. | SE-01, SE-04, SE-05, SE-06, SE-07, SC-04 | A bouncing-ball ODE runs headless. 10 repeated runs give byte-identical logs. |
 | 3–4 | **M3: Physics + robots** | MuJoCo world, URDF/MJCF import, FK/Jacobian/IK in the Robotics toolbox. | SE-03, IO-01, TB-ROBOT | The UR5 loads, and FK matches a reference within 1e-6. IK converges within 50 iterations for 95% of random reachable poses. |
+| 4 | **M3b: Robotics depth** | One shared MuJoCo world per scene, scene objects, robot placement and mounting, servos and targets, `scene.controller`, joint PID / impedance, differential IK and operational-space control, dynamics, trajectories, transform tree, Menagerie robot library, friction grasping. | RB-01–RB-12, TB-ROBOT (rest) | A Panda (or a scripted gripper) picks up a cube and lifts it 10 cm under differential-IK control. Operational-space control tracks a task-space step to within 1 mm. Inverse dynamics matches MuJoCo's forward dynamics within 1e-6. All M3 tests still pass. |
 | 4–5 | **M4: Viewport + IPC** | Sim process, shared memory/ZMQ, PyVista viewport, camera controls, trails, selection, debug draw, gizmo, 2D mode. | SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06 | The UC-3 IK drag demo works live. Killing the sim process doesn't crash the UI. |
 | 6 | **M5: Timeline + plots** | Timeline playback and scrubbing, pyqtgraph panel, signal tree, synced cursor, XY/scatter/histogram plots, exports. | VP-05, DA-01–DA-04, DA-07, DS-09 | Scrubbing moves the viewport and plot cursor together within 100 ms. |
 | 7 | **M6: Console + workspace** | IPython console, editor, workspace browser, live parameter tweaking, CSV/.mat import, project save/load. | SC-01–SC-05, IO-02, IO-04 | `sim.params` changes take effect on the next tick. A project round-trips save→load. |
@@ -661,3 +710,4 @@ Stop for review after each one.
 | Q1 | Should the block editor also generate the Python script (BD-10) in the MVP, for portfolio value? | Default: no (v1). Revisit after M7. |
 | Q2 | Ship a standalone PyInstaller build for the MVP? | Default: no. `pip install` only, and revisit at M10. |
 | Q3 | License for SimView itself? | Default: MIT. Confirm before the first public push. |
+| R7 | Menagerie robots are large (tens of MB each), so they are downloaded on first use; that needs network access once per robot and per CI cache. | Pin one Menagerie commit, cache under the user cache folder, and give an offline error that says how to fetch. CI caches the folder. |

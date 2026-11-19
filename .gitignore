@@ -11,3 +11,5 @@ build/
 coverage.xml
 htmlcov/
 runs/
+.simview-cache/
+MUJOCO_LOG.TXT

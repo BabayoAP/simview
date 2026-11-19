@@ -24,7 +24,7 @@ Read these before doing anything:
 uv venv --python 3.12 .venv && uv pip install -e ".[dev]"   # setup
 .venv/bin/simview [--theme light]                           # GUI
 .venv/bin/simview run examples/bouncing_ball.py --headless   # headless run
-QT_QPA_PLATFORM=offscreen .venv/bin/pytest                   # tests
+QT_QPA_PLATFORM=offscreen .venv/bin/pytest                   # tests (SIMVIEW_OFFLINE=1 skips downloads)
 .venv/bin/ruff check . && .venv/bin/ruff format --check .    # lint (ruff 0.17.5, pinned in CI)
 ```
 

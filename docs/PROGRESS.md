@@ -8,6 +8,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M1: Skeleton + design system | ✅ Approved 2026-11-18 | `main` | DS-01, DS-02, DS-03, DS-07, DS-08, DS-14 |
 | M2: Core sim engine | ✅ Merged to `main` 2026-11-18 | `main` | SE-01, SE-04, SE-05, SE-06, SE-07, SC-04 (+ NF-06, NF-09) |
 | M3: Physics + robots | ✅ Approved 2026-11-18 | `main` | SE-03, IO-01, TB-ROBOT (partial, D-023) |
+| M3b: Robotics depth (PRD 1.1) | Built, tests green locally, **awaiting approval** | `m3b-robotics-depth` | RB-01–RB-12, TB-ROBOT (rest) |
 | M4–M10 | Not started | | see PRD §10 |
 
 ## M1: Skeleton + design system
@@ -52,8 +53,33 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
   round-trip). TB-ROBOT ◐ (FK, Jacobian, IK, SE(3) basics; see D-023).
 - 138 tests (36 new), `simview/core` coverage 99%. Decisions D-017..D-024.
 
+## M3b: Robotics depth
+
+Added by PRD 1.1 (2026-11-18): Alloy's robotics functionality, rebuilt natively on SimView's
+MuJoCo backend (D-025), plus the rest of TB-ROBOT.
+
+- `physics/world.py`: one shared MuJoCo world per scene; ground, boxes, spheres, cylinders,
+  capsules (free or static); world options (integrator, friction cone). `Robot` moved into it
+  with M3's API kept (D-026, D-027, D-028, D-031).
+- `Robot`: placement (`pos`, `quat`), MJCF strings, mounting on another robot's body or site,
+  generated position/velocity servos, `set_targets` with clamping and ramps, `set_controls`,
+  gravity compensation, adjacent-link contact exclusion (D-029, D-032).
+- `scene.controller(rate=...)` from PRD §8.3, without `ctx.draw` (D-033).
+- Robotics toolbox: `JointPID` (PID / impedance), `DifferentialIK`, `OperationalSpace`,
+  `inverse_dynamics` / `gravity_torques` / `bias_forces` / `mass_matrix`, `trajectory`
+  (cubic, quintic, trapezoidal), `frames` / `frame_tree` / `transform`, and `library`
+  (Menagerie Panda, UR10e, Robotiq 2F-85, downloaded on first use, D-034).
+- `examples/ur5_pick.py`: UC-3 pick-and-lift, runs headless from the CLI.
+- Done-when: pick up a cube and lift it 10 cm under differential IK ✅ (UR5 + scripted gripper,
+  9.9 cm, D-035); operational-space control tracks a task-space step within 1 mm ✅; inverse
+  dynamics matches forward dynamics within 1e-6 ✅ (worst 5e-12); all M3 tests still pass ✅.
+- Requirement IDs: RB-01 ✅ RB-02 ✅ RB-03 ✅ RB-04 ✅ RB-05 ✅ RB-06 ✅ RB-07 ✅ RB-08 ✅
+  RB-09 ✅ RB-10 ✅ RB-11 ✅ RB-12 ✅; TB-ROBOT ✅ (complete with M3).
+- 197 tests (59 new; network tests download about 70 MB once), `simview/core` coverage 99%.
+  Decisions D-025..D-036.
+
 ## Next
 
-1. Owner reviews M3. Gate question: should the rest of TB-ROBOT (trajectory generation, inverse
-   dynamics via MuJoCo, transform-tree utilities) be built now, or with UC-3 in M4/M8? (D-023)
+1. Owner reviews M3b.
 2. Start **M4: Viewport + IPC** (SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06).
+   `ctx.draw` for controllers arrives here (D-033).

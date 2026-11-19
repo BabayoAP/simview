@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from simview.core.rng import make_rng
-from simview.core.scene import Scene
+from simview.core.scene import Context, Scene
 
 
 def tick_count(duration: float, dt: float) -> int:
@@ -27,6 +27,12 @@ class Sim:
         for e in scene.entities.values():
             e.reset()
             e.validate()
+        if scene.world is not None:
+            scene.world.reset()
+        # Controllers run every `period` ticks, starting at tick 0 (RB-06).
+        self.controllers = [
+            (c, 1 if c.rate is None else round(1.0 / (c.rate * self.dt))) for c in scene.controllers
+        ]
 
     @property
     def t(self) -> float:
@@ -35,6 +41,13 @@ class Sim:
 
     def step(self) -> None:
         t = self.t
+        for c, period in self.controllers:
+            if self.tick % period == 0:
+                out = c.fn(t, self.scene, Context(self, period * self.dt))
+                for name, u in (out or {}).items():
+                    self.scene[name].u = np.asarray(u, dtype=np.float64)
         for e in self.scene.entities.values():
             e.advance(t, self.dt)
+        if self.scene.world is not None:
+            self.scene.world.step(t, self.dt)
         self.tick += 1

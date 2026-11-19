@@ -22,8 +22,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       QT_QPA_PLATFORM: offscreen
+      SIMVIEW_CACHE: ${{ github.workspace }}/.simview-cache
     steps:
       - uses: actions/checkout@v4
+      - name: Menagerie robot cache (RB-11, PRD R7)
+        uses: actions/cache@v4
+        with:
+          path: .simview-cache
+          key: menagerie-${{ hashFiles('src/simview/toolboxes/robotics/library.py') }}
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python }}

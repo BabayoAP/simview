@@ -1,8 +1,9 @@
 """Forward kinematics, geometric Jacobian, and damped-least-squares IK (TB-ROBOT).
 
-All three use a scratch `MjData`, so they never disturb a robot's simulated state. Frames are
-MuJoCo body names (URDF links, including static ones such as `tool0`). Poses are 4x4 transforms
-in the world frame.
+All of them work on a scratch `MjData`, so they never disturb the simulated state. The rest of
+the world (other robots, a free base) is posed as it currently is; only the robot's own joints
+take the `q` you pass. Frames are the robot's body or site names, bare (`"tool0"`) or full
+(`"ur5/tool0"`); the default is the robot's `default_frame`. Poses are 4x4 world transforms.
 """
 
 from __future__ import annotations
@@ -15,47 +16,63 @@ import numpy as np
 from simview.physics.mujoco_world import Robot
 from simview.toolboxes.robotics import se3
 
-DEFAULT_FRAME = "tool0"
+
+def resolve_frame(robot: Robot, frame: str | None) -> tuple[mujoco.mjtObj, int]:
+    """(object type, id) of a body or site of `robot`."""
+    full = robot.full(frame or robot.default_frame)
+    for obj in (mujoco.mjtObj.mjOBJ_BODY, mujoco.mjtObj.mjOBJ_SITE):
+        i = mujoco.mj_name2id(robot.model, obj, full)
+        if i >= 0:
+            return obj, i
+    raise KeyError(f"{robot.name} has no frame (body or site) named {frame!r}")
 
 
-def _body(robot: Robot, frame: str) -> int:
-    bid = mujoco.mj_name2id(robot.model, mujoco.mjtObj.mjOBJ_BODY, frame)
-    if bid < 0:
-        raise KeyError(f"{robot.name} has no frame (body) named {frame!r}")
-    return bid
+def scratch(robot: Robot) -> mujoco.MjData:
+    """A scratch MjData for the robot's current world model (rebuilt if the world recompiled)."""
+    cached = getattr(robot, "_scratch", None)
+    if cached is None or cached[0] is not robot.model:
+        cached = (robot.model, mujoco.MjData(robot.model))
+        robot._scratch = cached  # noqa: SLF001 - private to the robotics toolbox
+    return cached[1]
 
 
-def _scratch(robot: Robot) -> mujoco.MjData:
-    data = getattr(robot, "_kin_data", None)
-    if data is None:
-        data = mujoco.MjData(robot.model)
-        robot._kin_data = data  # noqa: SLF001 - cached on the robot, private to this module
-    return data
-
-
-def _posed(robot: Robot, q: np.ndarray | None) -> mujoco.MjData:
-    data = _scratch(robot)
-    data.qpos[:] = robot.q if q is None else np.asarray(q, dtype=np.float64)
+def posed(robot: Robot, q: np.ndarray | None = None, qd: np.ndarray | None = None) -> mujoco.MjData:
+    """Scratch data with the world's current state, the robot at `q` (and `qd`), kinematics done."""
+    data = scratch(robot)
+    data.qpos[:] = robot.data.qpos
+    data.qvel[:] = 0.0
+    for member in robot.world.members if robot.world is not None else []:
+        nq = len(member.qidx)  # type: ignore[attr-defined]
+        data.qpos[member.qidx] = member.x[:nq]  # type: ignore[attr-defined]
+    data.qpos[robot.qidx] = robot.q if q is None else np.asarray(q, dtype=np.float64)
+    if qd is not None:
+        data.qvel[robot.vidx] = qd
     mujoco.mj_kinematics(robot.model, data)
     mujoco.mj_comPos(robot.model, data)
     return data
 
 
-def fk(robot: Robot, q: np.ndarray | None = None, frame: str = DEFAULT_FRAME) -> np.ndarray:
+def fk(robot: Robot, q: np.ndarray | None = None, frame: str | None = None) -> np.ndarray:
     """World pose of `frame` at joint positions `q` (default: the robot's current `q`)."""
-    bid = _body(robot, frame)
-    data = _posed(robot, q)
-    return se3.make(data.xmat[bid].reshape(3, 3), data.xpos[bid])
+    obj, i = resolve_frame(robot, frame)
+    data = posed(robot, q)
+    if obj == mujoco.mjtObj.mjOBJ_BODY:
+        return se3.make(data.xmat[i].reshape(3, 3), data.xpos[i])
+    return se3.make(data.site_xmat[i].reshape(3, 3), data.site_xpos[i])
 
 
-def jacobian(robot: Robot, q: np.ndarray | None = None, frame: str = DEFAULT_FRAME) -> np.ndarray:
-    """6 x nv geometric Jacobian of `frame`'s origin: rows [linear; angular], world frame."""
-    bid = _body(robot, frame)
-    data = _posed(robot, q)
+def jacobian(robot: Robot, q: np.ndarray | None = None, frame: str | None = None) -> np.ndarray:
+    """6 x nv geometric Jacobian of `frame`'s origin over the robot's own joints:
+    rows [linear; angular], world frame."""
+    obj, i = resolve_frame(robot, frame)
+    data = posed(robot, q)
     jacp = np.zeros((3, robot.model.nv))
     jacr = np.zeros((3, robot.model.nv))
-    mujoco.mj_jacBody(robot.model, data, jacp, jacr, bid)
-    return np.vstack([jacp, jacr])
+    if obj == mujoco.mjtObj.mjOBJ_BODY:
+        mujoco.mj_jacBody(robot.model, data, jacp, jacr, i)
+    else:
+        mujoco.mj_jacSite(robot.model, data, jacp, jacr, i)
+    return np.vstack([jacp, jacr])[:, robot.vidx]
 
 
 @dataclass(frozen=True)
@@ -69,10 +86,9 @@ class IKResult:
 
 def _limits(robot: Robot) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Lower/upper joint limits, and a mask of revolute joints whose range covers [-pi, pi]."""
-    m = robot.model
-    lo = np.where(m.jnt_limited, m.jnt_range[:, 0], -np.inf)
-    hi = np.where(m.jnt_limited, m.jnt_range[:, 1], np.inf)
-    hinge = m.jnt_type == int(mujoco.mjtJoint.mjJNT_HINGE)
+    lim = robot.joint_limits()
+    lo, hi = lim[:, 0], lim[:, 1]
+    hinge = robot.model.jnt_type[robot.joint_ids] == int(mujoco.mjtJoint.mjJNT_HINGE)
     return lo, hi, hinge & (lo <= -np.pi) & (hi >= np.pi)
 
 
@@ -80,7 +96,7 @@ def ik(
     robot: Robot,
     target: np.ndarray,
     q0: np.ndarray | None = None,
-    frame: str = DEFAULT_FRAME,
+    frame: str | None = None,
     *,
     max_iters: int = 50,
     pos_tol: float = 1e-6,
@@ -105,8 +121,7 @@ def ik(
     `max_iters` bounds the total number of updates, counting each restart as one. Starts from
     `q0` (default: the robot's current `q`).
     """
-    m = robot.model
-    if m.nq != m.nv:
+    if robot.nq != robot.nv:
         raise ValueError(f"{robot.name}: IK supports hinge/slide joints only (nq == nv)")
     lo, hi, wrap = _limits(robot)
     sample_lo = np.where(np.isfinite(lo), lo, -np.pi)

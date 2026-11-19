@@ -23,7 +23,14 @@ def resolve(path: str | Path) -> Path:
     for candidate in (BUNDLED / stem / f"{stem}.urdf", BUNDLED / stem / f"{stem}.xml"):
         if candidate.is_file():
             return candidate
-    raise FileNotFoundError(f"no robot file at {path!s} and no bundled robot named {stem!r}")
+    from simview.toolboxes.robotics import library  # RB-11: downloaded on first use
+
+    if stem in library.ROBOTS:
+        return library.fetch(stem)
+    raise FileNotFoundError(
+        f"no robot file at {path!s} and no bundled or library robot named {stem!r} "
+        f"(library: {', '.join(sorted(library.ROBOTS))})"
+    )
 
 
 def _mesh_path(filename: str, base: Path) -> Path:

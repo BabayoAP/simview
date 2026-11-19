@@ -124,3 +124,11 @@ def test_cli_subprocess_without_qt(tmp_path):
     proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     assert pq.read_table(out).num_rows == 501
+
+
+def test_ur5_pick_example_lifts_the_cube(tmp_path):
+    """examples/ur5_pick.py (UC-3, M3b) still picks the cube up when run as a scene file."""
+    scene = load_scene(ROOT / "examples" / "ur5_pick.py")
+    result = run(scene, 5.5, out=tmp_path / "pick.parquet")
+    z = result["cube.z"]
+    assert z[-1] - z[0] >= 0.095

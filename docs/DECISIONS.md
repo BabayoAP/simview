@@ -144,3 +144,88 @@ PROGRESS.md. `robot.fk(q)`, `robot.jacobian(q)`, and `robot.ik(T)` exist as meth
 **D-024 — Math names in lint.** Robotics code uses `T`, `R`, `J` for transforms, rotations, and
 Jacobians. `pyproject.toml` turns off ruff's N803/N806 naming rules for
 `src/simview/toolboxes/robotics/` and for tests, instead of scattering `noqa` comments.
+
+## M3b
+
+**D-025 — Alloy's robotics, rebuilt natively.** The owner asked (2026-11-18) for "all the
+necessary functionality of Alloy robotics", the Alloy physics engine from Argon Robotics
+(`github.com/argonrobotics-ai/alloy`, Apache-2.0). Alloy runs only on Linux and Apple-silicon
+macOS and pins `mujoco==3.17.0`, so it is not a dependency. Its rigid-body robotics is rebuilt on
+SimView's own MuJoCo backend instead, and works on all three OSes. The owner chose the "necessary"
+set: shared world and objects, joint driving, controllers, grippers and a robot library. Everything
+else is listed as `[Future]` in PRD §5.10 (RB-20..RB-28). No Alloy code was copied; its API names
+and units were followed where they fit (full sizes in metres, `set_targets`, ramps). PRD → 1.1,
+new milestone M3b, which also finishes TB-ROBOT (trajectories, inverse dynamics, transform tree).
+
+**D-026 — One world per scene, and what changed for M3's `Robot`.** A scene has one `World`
+(`physics/world.py`), made on first use, that compiles every robot and object into one MuJoCo
+model with `MjSpec.attach` (robot names prefixed `<robot>/`). It recompiles whenever an item is
+added; scenes are small. Each member entity owns a slice of the state through index arrays
+(`qidx`, `vidx`, `act_ids`), and the scheduler steps the world once per tick after controllers
+and ODE entities. M3's public `Robot` API is kept: the same constructor argument, state names,
+`q`, `qd`, `set_q`, `u`, `fk`/`jacobian`/`ik`, and `robot.model` (now the world's model). A robot
+made on its own gets a private world and moves into the scene's world when added. Frame names that
+contain `/` are full world names, so an arm's kinematics can use a mounted tool's frame
+(`"grip/pinch"`).
+
+**D-027 — World options belong to the world.** Once attached, a robot file's own `<option>` no
+longer applies (MuJoCo warns: "keeping parent value"). The world's integrator defaults to
+`implicitfast`, MuJoCo's recommendation for servo-driven robots; M3 robots used their file's
+option (Euler for the UR5). `scene.physics().integrator` / `.gravity` change it; the MJCF-vs-ODE
+pendulum test now selects RK4 explicitly.
+
+**D-028 — Friction cone for grasping.** `World.cone` / `.impratio` are exposed, with MuJoCo's
+defaults (pyramidal, 1). Grasping scenes set `"elliptic"` and `10`, as Menagerie grippers ask for
+and MuJoCo recommends, so a squeezed object doesn't creep out of the fingers.
+
+**D-029 — Adjacent links never collide.** Building M3b's controllers found the UR5's shoulder in
+permanent contact with its base, a bug present since M3. MuJoCo skips parent-child contacts except
+when the parent is welded to the world, and URDF's `base_link_inertia` is. Every robot now
+excludes contacts between each body and its parent (the URDF/ROS convention). Non-adjacent
+self-contacts (a folded arm) are physical and stay.
+
+**D-030 — Differential IK integrates from its last command.** Stepping from the measured joints
+made a servo-driven arm creep: a servo always lags its target, so each new target was only a small
+step ahead. `DifferentialIK` keeps `q_cmd`, starts from the measured q on its first call or after
+`reset()`, and takes each step from the previous command, as position-controlled arms do.
+
+**D-031 — Objects.** Sizes are full lengths in metres (Alloy's convention; MuJoCo's half sizes are
+derived): box (x, y, z), sphere (diameter), cylinder and capsule (diameter, length). A free
+object needs `mass=` and is an entity with 13 logged states (`x y z qw qx qy qz vx vy vz wx wy
+wz`). `static=True` makes fixed geometry that is not an entity. One ground plane per scene.
+
+**D-032 — Servos and targets.** `servos="position"` / `"velocity"` adds a servo to each hinge or
+slide joint that has no actuator (defaults kp = 1000, kv = 100; one value or a dict by joint), with
+`ctrlrange` set to the joint range. MJCF actuators are used as they are. `set_targets` checks the
+servo kind, clamps position targets to the joint range with a warning, and with `ramp=` moves the
+target linearly from its current value. `set_controls` is raw (no clamp, no warning). Unnamed
+joints and actuators are named `joint<k>` / `actuator<k>`. `gravity_compensation=True` uses
+MuJoCo's body `gravcomp`, an ideal stand-in for an arm's own gravity compensation.
+
+**D-033 — `scene.controller` arrives in M3b, without `ctx.draw`.** RB-07 needs per-tick control,
+so the §8.3 controller API moves forward from M4/M5 (D-016). `fn(t, state, ctx)`: `state` is the
+scene (entities by name), `ctx` has `dt` (the controller's period), `tick`, and `rng`. Due
+controllers run at the start of a tick, before ODE entities and the world step. A returned dict
+`{entity: u}` sets inputs; returning None is fine. The rate must divide 1/dt. `ctx.draw` comes with
+the viewport in M4.
+
+**D-034 — The robot library downloads on first use.** Menagerie robots are tens of MB each (Panda
+34 MB, UR10e 33 MB), too big to bundle. `library.fetch` downloads only the files a robot's MJCF
+references, plus its LICENSE and README, from `raw.githubusercontent.com` at commit `370c4396`,
+with the standard library's `urllib` (no new dependency), into `$SIMVIEW_CACHE` (default
+`~/.cache/simview`). An offline first use raises `FetchError` saying how to fix it. Licenses:
+Panda Apache-2.0, UR10e BSD-3-Clause, Robotiq 2F-85 BSD-2-Clause. Tests that download are marked
+`network` (skipped with `SIMVIEW_OFFLINE=1`); CI caches the folder.
+
+**D-035 — The pick done-when uses the UR5 and a scripted gripper.** PRD §10 allows "a Panda (or a
+scripted gripper)". The test and `examples/ur5_pick.py` use the bundled UR5 with a two-finger MJCF
+gripper mounted on `tool0`, so they run offline: the cube lifts 9.9 cm (10 cm commanded; about
+2 mm slip in the grip), with a quintic lift because a step target jerks the cube out. The Panda is
+covered by network tests (loads, 8 actuators, reaches a pose within 5 mm under differential IK);
+a Panda pick is not tested yet.
+
+**D-036 — Controller gains and MuJoCo versions.** Fixed joint gains high enough for the UR5's
+shoulder make its light wrist (about 1e-4 kg·m²) unstable under 1 ms torque control. The joint
+controller tests scale gains by inertia (kp = ω²·M_ii, kd = 2ω·M_ii); `OperationalSpace` scales
+by the mass matrix itself. `mujoco>=3.3` (for `MjSpec.attach`); `mj_fullM` changed signature in
+MuJoCo 4 and both forms are handled. Development used MuJoCo 4.0.1; CI installs the latest release.

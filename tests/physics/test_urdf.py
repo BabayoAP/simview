@@ -35,7 +35,7 @@ def test_bundled_robot_found_by_name():
 
 
 def test_unknown_robot_raises():
-    with pytest.raises(FileNotFoundError, match="no bundled robot"):
+    with pytest.raises(FileNotFoundError, match="no bundled or library robot"):
         resolve("not_a_robot.urdf")
 
 

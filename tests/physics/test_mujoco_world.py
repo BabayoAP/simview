@@ -52,6 +52,7 @@ def test_add_robot_returns_named_entity():
 def test_mujoco_and_ode_pendulums_agree(pendulum_path):
     """The same pendulum as an MJCF body and as a custom ODE gives the same motion."""
     scene = sv.Scene(dt=1e-3)
+    scene.physics().integrator = "rk4"  # world options belong to the world (D-027)
     mj = scene.add_robot(pendulum_path, name="mj")
     scene.add_entity(OdePendulum([0.5, 0.0], name="ode"))
     mj.x0[0] = 0.5
