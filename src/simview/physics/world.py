@@ -118,6 +118,9 @@ class Body(Entity):
         """Orientation quaternion (w, x, y, z)."""
         return self.x[3:7]
 
+    def position(self) -> np.ndarray:
+        return self.x[:3].copy()
+
     def bind(self, model: mujoco.MjModel) -> None:
         jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, self.name)
         self.qidx = np.arange(model.jnt_qposadr[jid], model.jnt_qposadr[jid] + 7)

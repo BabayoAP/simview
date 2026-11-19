@@ -42,6 +42,16 @@ class Entity:
     def derivative(self, t: float, x: np.ndarray, u: np.ndarray) -> np.ndarray:
         raise NotImplementedError
 
+    def position(self) -> np.ndarray | None:
+        """Where the viewport draws this entity's marker and trail (VP-04), or None.
+
+        The default uses states named x, y, z (any missing one is 0) if there is an x or y;
+        override it for other layouts (e.g. a ball whose height state is `h`)."""
+        names = self.state_names
+        if "x" not in names and "y" not in names:
+            return None
+        return np.array([self[n] if n in names else 0.0 for n in ("x", "y", "z")])
+
     def validate(self) -> None:
         """Called once when a run starts, after `reset`. Raises if the model is malformed."""
         dx = np.asarray(self.derivative(0.0, self.x, self.u))

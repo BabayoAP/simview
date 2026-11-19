@@ -12,6 +12,7 @@ from simview.core.entity import Entity
 if TYPE_CHECKING:
     import numpy as np
 
+    from simview.core.draw import DrawList
     from simview.core.scheduler import Sim
     from simview.physics.mujoco_world import Robot, ServoKind
     from simview.physics.world import Body, World
@@ -29,10 +30,15 @@ ControllerFn = Callable[[float, "Scene", "Context"], "Mapping[str, Any] | None"]
 
 @dataclass
 class Context:
-    """What a controller gets besides time and state. `ctx.draw` arrives with the viewport (M4)."""
+    """What a controller gets besides time and state."""
 
     sim: Sim
     dt: float  # the controller's own period
+
+    @property
+    def draw(self) -> DrawList:
+        """Debug draws shown in the viewport (VP-07); they last one tick unless persist=True."""
+        return self.sim.draw
 
     @property
     def rng(self) -> np.random.Generator:
@@ -41,6 +47,15 @@ class Context:
     @property
     def tick(self) -> int:
         return self.sim.tick
+
+
+@dataclass
+class Target:
+    """A pose the viewport's gizmo can drag (VP-10), e.g. an IK goal. Read `target.pose` (4x4)
+    from a controller; a drag in the UI replaces it. Not physical and not logged."""
+
+    name: str
+    pose: np.ndarray
 
 
 @dataclass
@@ -59,6 +74,7 @@ class Scene:
         self.channels: dict[str, LogFn] = {}
         self.controllers: list[Controller] = []
         self.world: World | None = None  # the shared MuJoCo world, made on first use (RB-01)
+        self.targets: dict[str, Target] = {}
 
     def physics(self) -> World:
         """The scene's MuJoCo world (created on first use, so ODE-only scenes never load it)."""
@@ -230,6 +246,19 @@ class Scene:
         return self._add_shape(
             "capsule", name, [diameter, length], pos, quat, mass, static, friction, rgba
         )
+
+    def add_target(self, name: str, pose: Sequence[Sequence[float]] | None = None) -> Target:
+        """A draggable pose (VP-10): `pose` is a 4x4 transform (default: identity at the origin)."""
+        import numpy as np
+
+        if name in self.targets or not name or "/" in name or "." in name:
+            raise ValueError(f"target name {name!r} is taken or has '/' or '.'")
+        matrix = np.eye(4) if pose is None else np.array(pose, dtype=np.float64)
+        if matrix.shape != (4, 4):
+            raise ValueError(f"a target pose is a 4x4 transform, got shape {matrix.shape}")
+        target = Target(name, matrix)
+        self.targets[name] = target
+        return target
 
     # -- controllers (RB-06) -------------------------------------------------------------------
     def controller(self, rate: float | None = None) -> Callable[[ControllerFn], ControllerFn]:

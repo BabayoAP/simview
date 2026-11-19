@@ -348,6 +348,12 @@ class Robot(Entity):
         else:
             data.qfrc_applied[self.vidx] += self.u
 
+    def position(self) -> np.ndarray:
+        """The default frame's position (VP-04: the trail follows the end effector)."""
+        from simview.toolboxes.robotics.kinematics import fk
+
+        return fk(self)[:3, 3].copy()
+
     # -- entity hooks -----------------------------------------------------------------------
     def validate(self) -> None:
         expected = len(self.act_ids) if len(self.act_ids) else self.nv

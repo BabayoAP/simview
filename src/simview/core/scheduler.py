@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from simview.core.draw import DrawList
 from simview.core.rng import make_rng
 from simview.core.scene import Context, Scene
 
@@ -24,6 +25,7 @@ class Sim:
         self.dt = scene.dt
         self.rng: np.random.Generator = make_rng(scene.seed)
         self.tick = 0
+        self.draw = DrawList()  # VP-07: shown by the viewport, recorded headless too
         for e in scene.entities.values():
             e.reset()
             e.validate()
@@ -41,6 +43,7 @@ class Sim:
 
     def step(self) -> None:
         t = self.t
+        self.draw.new_tick()
         for c, period in self.controllers:
             if self.tick % period == 0:
                 out = c.fn(t, self.scene, Context(self, period * self.dt))
