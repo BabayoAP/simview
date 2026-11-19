@@ -222,7 +222,8 @@ captured on its own), the Import mapping dialog by hand, and a comparison report
     the Runs panel).
 - Requirement IDs: SC-01 ✅ SC-02 ✅ SC-03 ✅ SC-04 ✅ (from M2; the console's `sim.scene`
   and the app build the same `Scene` from the file) SC-05 ✅ IO-02 ✅ IO-04 ✅.
-- New dependencies: `qtconsole`, `ipykernel`, `pygments` (all in PRD §8.1, D-063).
+- New dependencies: `qtconsole`, `ipykernel`, `pygments` (all in PRD §8.1, D-063). PySide6 is
+  kept below 6.12 on Python 3.11, where 6.12.0 crashes the interpreter (D-074).
 - 348 tests (36 new); `simview/core` coverage stays above 90%.
 
 ### Manual checks (visual, §0 rule 5)

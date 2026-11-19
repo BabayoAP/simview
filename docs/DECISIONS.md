@@ -531,3 +531,12 @@ function, class, builtin, decorator), each ≥ 4.5:1 on `bg.panel` and `bg.eleva
 One Pygments style built from them colors the editor and the console; the console's prompts
 and errors use the existing accent, success, and error tokens. Code text uses JetBrains Mono
 through a `role="code"` stylesheet rule (the app-wide `*` rule otherwise forces Inter).
+
+**D-074 — PySide6 below 6.12 on Python 3.11.** After M6, the Ubuntu / Python 3.11 CI job passed
+every test and then crashed at exit (`Fatal Python error: bool_dealloc`). Measured on CI:
+PySide6 6.12.0 over-releases `True` when a signal is emitted (a five-line `Signal(object)`
+script crashes Python 3.11 within 1000 emits), while 6.10.2 and 6.11.1 don't. qtconsole sends
+every kernel message through such signals, so each console cell and each new window drained
+`True`'s reference count until it was freed. Python 3.12 made `True` and `False` immortal, so
+there the bug is harmless. `pyproject.toml` keeps `PySide6<6.12` on Python < 3.12 only; lift it
+once a fixed PySide6 release is out.
