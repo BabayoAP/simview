@@ -10,7 +10,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M3: Physics + robots | ✅ Approved 2026-11-18 | `main` | SE-03, IO-01, TB-ROBOT (partial, D-023) |
 | M3b: Robotics depth (PRD 1.1) | ✅ Approved 2026-11-18 | `main` | RB-01–RB-12, TB-ROBOT (rest) |
 | M4: Viewport + IPC | ✅ Approved 2026-11-18 | `main` | SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06 |
-| M5: Timeline + plots | Built, **awaiting approval** | `m5-timeline-plots` | VP-05, DA-01–DA-04, DA-07, DS-09 |
+| M5: Timeline + plots | ✅ Approved 2026-11-19 | `main` | VP-05, DA-01–DA-04, DA-07, DS-09 |
 | M5b: Run investigation (PRD 1.2) | Not started | | RI-01–RI-06 |
 | M6–M10 | Not started | | see PRD §10 |
 
@@ -164,6 +164,4 @@ a plot by hand, and the XY, scatter, and histogram plots by eye (tested, not scr
 
 ## Next
 
-1. Owner reviews M5 (`simview examples/ur5_ik_drag.py`, press Space, drag the target, pause,
-   then scrub the timeline and drag `tool_error` from Signals onto Plots).
-2. Start **M5b: Run investigation** (RI-01–RI-06).
+1. Start **M5b: Run investigation** (RI-01–RI-06).
