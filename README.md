@@ -2,7 +2,7 @@
 
 Build, run, and visualize simulations of robots, vehicles, drones, and dynamic systems, in Python.
 
-> Status: M2 (core sim engine, headless runs). See the PRD for the milestone plan.
+> Status: M2 (core sim engine, headless runs). See [docs/PRD.md](docs/PRD.md) for the milestone plan and [docs/PROGRESS.md](docs/PROGRESS.md) for where things stand.
 
 ## Install and run
 
