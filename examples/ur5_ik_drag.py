@@ -32,4 +32,6 @@ def follow(t: float, state: sv.Scene, ctx: Context) -> None:
     ctx.draw.line(tool[:3, 3], goal.pose[:3, 3], color="state.warning")
 
 
-scene.log("tool_error", lambda sim: float(np.linalg.norm(arm.fk()[:3, 3] - goal.pose[:3, 3])))
+scene.log(
+    "tool_error", lambda sim: float(np.linalg.norm(arm.fk()[:3, 3] - goal.pose[:3, 3])), unit="m"
+)

@@ -91,6 +91,7 @@ class Scene:
         self.seed = int(seed)
         self.entities: dict[str, Entity] = {}
         self.channels: dict[str, LogFn] = {}
+        self.channel_units: dict[str, str] = {}
         self.controllers: list[Controller] = []
         self.world: World | None = None  # the shared MuJoCo world, made on first use (RB-01)
         self.targets: dict[str, Target] = {}
@@ -332,11 +333,13 @@ class Scene:
 
         return register
 
-    def log(self, name: str, fn: LogFn) -> None:
-        """Log a user-tagged channel each tick. `fn(sim)` returns a float (SE-06)."""
+    def log(self, name: str, fn: LogFn, unit: str = "") -> None:
+        """Log a user-tagged channel each tick. `fn(sim)` returns a float (SE-06).
+        `unit` (e.g. "m") labels its plot axis (DS-09)."""
         if name in self.channels or "." in name:
             raise ValueError(f"channel name {name!r} is taken or contains '.'")
         self.channels[name] = fn
+        self.channel_units[name] = unit
 
     def __getitem__(self, name: str) -> Entity:
         return self.entities[name]

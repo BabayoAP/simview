@@ -2,7 +2,7 @@
 
 Build, run, and visualize simulations of robots, vehicles, drones, and dynamic systems, in Python.
 
-> Status: M4 (3D viewport, sim process, live controls). See [docs/PRD.md](docs/PRD.md) for the milestone plan and [docs/PROGRESS.md](docs/PROGRESS.md) for where things stand.
+> Status: M5 (timeline scrubbing and replay, live plots, data and plot export). See [docs/PRD.md](docs/PRD.md) for the milestone plan and [docs/PROGRESS.md](docs/PROGRESS.md) for where things stand.
 
 ## Install and run
 
@@ -45,6 +45,12 @@ The simulation runs in its own process, so a crash in scene code shows a traceba
 console instead of taking the window down. Viewport: right-drag orbits around the point under
 the cursor, Ctrl+right-drag pans, the wheel zooms toward the cursor, click selects, `F`/`A` frame
 the selection or everything, `1` `3` `7` `0` pick front/right/top/iso, and `Tab` toggles 2D.
+
+Every tick is recorded. The timeline scrubs it: `,` and `.` step back and forward one tick, and
+Play from an earlier point replays the run, then carries on live. Drag signals from the Signals
+panel onto the Plots panel (time, XY, scatter, histogram); hovering a time plot shows that moment
+in the 3D view. Export Data writes every signal to CSV, Parquet, or MATLAB `.mat`; each plot
+exports to PNG or SVG in the light theme.
 
 ## Robots
 

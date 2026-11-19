@@ -14,6 +14,7 @@ from typing import Any
 import zmq
 
 from simview.ipc import protocol as proto
+from simview.ipc.record import RowLayout
 from simview.ipc.server import serve
 from simview.ipc.shm import Frame, Layout, StateBuffer
 
@@ -26,6 +27,7 @@ class SimClient:
         self.buffer: StateBuffer | None = None
         self.layout: Layout | None = None
         self.description: proto.Description | None = None
+        self.row_layout: RowLayout | None = None  # history row columns (VP-05, DA-01)
         self.scene_path: Path | None = None
         self._dead_reported = False
 
@@ -103,6 +105,7 @@ class SimClient:
                 self._release()
                 self.layout = ev["layout"]
                 self.description = ev["description"]
+                self.row_layout = ev["rows"]
                 self.buffer = StateBuffer(ev["layout"], name=ev["shm"])
             events.append(ev)
         if self.proc is not None and not self.proc.is_alive() and not self._dead_reported:

@@ -268,3 +268,47 @@ def test_visuals_world_axes_and_trail_style(qapp, tmp_path):
     np.testing.assert_allclose(vp.trail_actors["box"].GetProperty().GetColor(), want, atol=1e-6)
     vp.close_viewport()
     vp.close()
+
+
+def test_recorded_trails_replace_the_live_ones(scene_view):
+    """VP-05 + VP-04: a scrubbed frame draws the trail recorded up to that moment."""
+    vp, sim = scene_view
+    name = next(iter(vp.trails))
+    path = np.column_stack([np.linspace(0, 0.3, 50), np.zeros(50), np.full(50, 0.2)])
+    vp.update_frame(frame_of(sim), {name: path})
+    np.testing.assert_allclose(vp.trails[name].polyline().points, path)
+    vp.render()
+
+
+def test_scrubbing_redraws_the_real_viewport_within_100_ms(qapp, settings):
+    """M5 done-when on the OpenGL viewport: a scrub re-poses the arm, trails, draws, HUD, and
+    the plot cursor, and renders, within 100 ms."""
+    from simview.ui.main_window import MainWindow
+    from simview.ui.viewport.view import Viewport
+    from tests.ui.test_scene_session import DRAG, loaded, pump
+
+    w = MainWindow(settings)
+    w.show()
+    try:
+        w.load_scene(DRAG)
+        pump(qapp, lambda: loaded(w) and w.history is not None and w.history.n >= 1)
+        assert isinstance(w.sim_view, Viewport)
+        w.speed_box.setCurrentIndex(w.speed_box.findText("Max"))
+        w.run()
+        pump(qapp, lambda: w.history.n >= 500)
+        w.pause()
+        plot = w.plots.add_plot("time", ["ur5.shoulder_pan_joint.q"])
+        w.plots.refresh()
+        h = w.history
+        times = []
+        for i in (10, h.n // 2, h.n // 3, 200, 450):
+            start = time.perf_counter()
+            w.timeline.slider.setValue(i)  # seek -> show_time -> viewport render
+            qapp.processEvents()
+            times.append(time.perf_counter() - start)
+            assert w.sim_view.frame.tick == int(h.ticks[i])
+            assert plot.cursor.value() == pytest.approx(h.time_of(i))
+        assert float(np.median(times)) < 0.100, times
+    finally:
+        w.close_scene()
+        w.close()

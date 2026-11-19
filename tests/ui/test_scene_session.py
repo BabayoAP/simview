@@ -51,6 +51,20 @@ def test_open_scene_fills_the_panels(qapp, window):
     assert "ur5_ik_drag.py" in window.windowTitle()
 
 
+def test_the_3d_view_keeps_the_central_area(qapp, window):
+    """DS-03 / §7.2: opening a scene must not collapse the central area (an M4 bug: replacing
+    the central widget let the side docks take the whole width)."""
+    width = window.centralWidget().width()
+    window.load_scene(DRAG)
+    pump(qapp, lambda: loaded(window))
+    window.plots.add_plot("time", ["tool_error"])
+    window.plots.add_plot("time", ["tool_error"])
+    qapp.processEvents()
+    assert window.centralWidget().currentWidget() is window.sim_view
+    assert window.centralWidget().width() == width > 0.5 * window.width()
+    assert window.docks["plots"].height() < 0.4 * window.height()
+
+
 def test_selection_is_synced_and_inspector_follows(qapp, window):
     """DS-06 + VP-06: select in the tree -> viewport and inspector agree; joints are sliders."""
     window.load_scene(DRAG)

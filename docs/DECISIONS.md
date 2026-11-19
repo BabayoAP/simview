@@ -319,3 +319,66 @@ coalesced to the newest set per UI frame and batched into a few actors. NF-01's 
 console replaces it in M6. The Inspector lists every state live, and a robot's joints as sliders
 that follow the simulation (UC-3). `simview scene.py` opens a scene directly. New dependencies:
 `pyvista`, `pyvistaqt`, `pyzmq` (all in PRD §8.1).
+
+## M5
+
+**D-048 — The timeline replays a recording; it doesn't rewind the sim (VP-05).** A run can't be
+restarted from a past tick: its state includes MuJoCo's warm starts and whatever controllers keep
+in closures (`DifferentialIK.q_cmd`). So the UI keeps a recording of every tick (D-049), and the
+timeline shows either the live sim or a recorded row. Scrubbing or stepping back (`,`) pauses the
+sim and parks on a row. Play from a parked row replays the recording at the playback speed (Max
+replays at 10×) and, when it runs out, the live sim carries on from where it stopped. Step forward
+(`.`) moves through the recording, and at its end steps the sim one tick. Hovering a time plot
+previews that moment in the viewport without moving the cursor (DA-02); clicking one seeks. Start
+and live-end buttons sit beside the transport (palette: "Go to Start / Live"). The speed menu
+stays in the toolbar; the timeline shows `live` or `replay` beside the time.
+
+**D-049 — Recording.** After every tick the sim process records one float64 row: the tick, every
+logged signal (the Parquet log's columns, SE-06), each entity's marker position, and every MuJoCo
+body pose (`ipc/record.py`). Rows go to the UI with each state publish (at most 120 Hz) as one
+array. A re-recorded tick (a body dropped by the gizmo while paused) or a reset replaces the rows
+from that tick on. The UI's `History` keeps them in one growable array; past 512 MB it drops its
+oldest quarter. Debug draws are recorded as the sim sends them (when they change, at most once per
+publish), so a scrubbed frame shows the newest draw set sent at or before it; per-tick draws
+would cost too much for controllers that draw every tick. Recording costs the UR5 drag scene a
+`mj_kinematics` per tick (a few µs).
+
+**D-050 — Plot speed (DA-01).** pyqtgraph's own downsampling still drew 10 × 9k-point antialiased
+paths (about 500 ms a frame), and 1.5 px antialiased polylines are slow in Qt's raster engine.
+Time plots now thin every trace to a min and a max per bin before drawing (`ui/plots/decimate.py`;
+spikes survive), at most 0.75 bins per pixel, and draw segmented lines. While rows stream in, the
+bins are a power of two of samples and are cached, so a redraw only reduces new rows. Zooming
+or panning by hand re-thins just the visible span. Measured on the development machine for 10
+signals × 100k samples at 1000×300: median 25 ms per update (about 40 FPS). The test asserts
+33 ms locally; CI runners render in software and only get a regression bound (150 ms).
+
+**D-051 — Plot kinds and behavior (DA-02..DA-04, DS-06).** Kinds: time, XY (the first signal
+dropped is X; each later one is a Y series against it; same units lock the aspect ratio, so a
+top view isn't skewed), scatter (XY with points), and histogram (all recorded samples; the cursor
+marks the current value). Drop signals from the tree onto a plot, onto the empty panel (makes a
+time plot), or double-click them. Clicking a trace selects its entity, and the selected entity's
+traces are drawn bold; plots don't report hover (pyqtgraph curves have no hover signal), but the
+signal tree does. A one-trace plot has no legend (its axis label names it); more get a legend in
+the top right, hidden while the hover readout shows. Vector components (x/y/z, vx…, wx…) use the
+X/Y/Z axis colors, others Okabe–Ito in order. Plots scroll in their panel instead of growing the
+dock. Axis values are shown as logged (no SI rescaling).
+
+**D-052 — Units for plot labels (DS-09).** `Entity.state_units` (optional class attribute, e.g.
+`{"h": "m"}`) and `scene.log(name, fn, unit="")` are new optional arguments; nothing existing
+changes. Free bodies and robots fill them in (m, m/s, rad, rad/s; quaternions unitless).
+
+**D-053 — Exports (DA-07, DS-09).** Export Data writes the whole recording (every signal, `t`,
+`tick`) to CSV, Parquet, or `.mat` by extension. In `.mat`, names become valid MATLAB variables
+(`ur5.shoulder.q` → `ur5_shoulder_q`) and `signal_names` lists the originals. Each plot exports
+itself to PNG (2× its size) or SVG, in the light theme. pyqtgraph's SVG exporter fails on Qt 6
+paths, so SVG uses Qt's `QSvgGenerator`. New dependency: `pyqtgraph` (PRD §8.1).
+
+**D-054 — Fixes to M4 found while checking M5 on screen.** (1) Opening a scene replaced the main
+window's central widget, which left it zero-wide: the 3D view vanished and the side docks took
+the width. The central widget is now one `QStackedWidget` (empty state, then the view), and the
+layout version is bumped so layouts saved with the bug are dropped. (2) The light theme showed
+black panels (Inspector, Console) when Windows is in dark mode: the Qt palette now comes from the
+tokens too, and Qt no longer makes the docks native windows next to VTK's. (3) Sliders and tree
+selection used the OS accent color: both are styled from the tokens now. (4) pyqtgraph creates
+parentless menus per plot; plots adopt them so they are deleted with the plot (no leak), and the
+test teardown deletes plain stray widgets last.

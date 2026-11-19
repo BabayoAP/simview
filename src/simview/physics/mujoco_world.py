@@ -101,6 +101,15 @@ class Robot(Entity):
             q_names += _names(f"{jname}.q", _QPOS_SIZE[int(alone.jnt_type[j])])
             v_names += _names(f"{jname}.v", _QVEL_SIZE[int(alone.jnt_type[j])])
         self.state_names = (*q_names, *v_names)
+        hinge, slide = int(mujoco.mjtJoint.mjJNT_HINGE), int(mujoco.mjtJoint.mjJNT_SLIDE)
+        units: dict[str, str] = {}
+        for j, jname in enumerate(self.joint_names):
+            kind = int(alone.jnt_type[j])
+            if kind == hinge:
+                units |= {f"{jname}.q": "rad", f"{jname}.v": "rad/s"}
+            elif kind == slide:
+                units |= {f"{jname}.q": "m", f"{jname}.v": "m/s"}
+        self.state_units = units
         self.actuator_names: tuple[str, ...] = tuple(
             alone.actuator(a).name or f"actuator{a}" for a in range(alone.nu)
         )

@@ -101,6 +101,11 @@ class Body(Entity):
         *("x", "y", "z", "qw", "qx", "qy", "qz"),
         *("vx", "vy", "vz", "wx", "wy", "wz"),
     )
+    state_units = {
+        **dict.fromkeys(("x", "y", "z"), "m"),
+        **dict.fromkeys(("vx", "vy", "vz"), "m/s"),
+        **dict.fromkeys(("wx", "wy", "wz"), "rad/s"),
+    }
 
     def __init__(self, shape: Shape) -> None:
         super().__init__([*shape.pos, *shape.quat, *[0.0] * 6], name=shape.name)

@@ -28,6 +28,9 @@ PLAY, PAUSE, STEP, RESET, SPEED, TARGET, BODY_POSE, QUIT = (
 )
 # Events, sim -> UI: {"event": name, ...}
 READY, ERROR, LOG, DRAWS, STOPPED = "ready", "error", "log", "draws", "stopped"
+# Per-tick history rows (VP-05, DA-01): {"event": ROWS, "rows": (n, width) float64 array}.
+# Rows replace any the UI holds from the first row's tick on (a re-recorded tick, or a reset).
+ROWS = "rows"
 
 # MuJoCo shows geom groups 0-2 by default; Menagerie puts collision-only geoms in group 3.
 VISIBLE_GROUPS = (0, 1, 2)

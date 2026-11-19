@@ -443,8 +443,9 @@ class Viewport(QWidget):
         self.target_widgets.append(widget)
 
     # ------------------------------------------------------------------ per frame
-    def update_frame(self, frame: Frame) -> None:
-        """Move everything to a new state frame (called at the render rate)."""
+    def update_frame(self, frame: Frame, trails: dict[str, np.ndarray] | None = None) -> None:
+        """Move everything to a new state frame (called at the render rate). `trails` gives
+        recorded trail paths by entity (from the timeline's history) instead of extending them."""
         if self.desc is None:
             return
         self.frame = frame
@@ -465,7 +466,10 @@ class Viewport(QWidget):
             m[:3, 3] = frame.markers[name]
             actor.user_matrix = m
         for name, trail in self.trails.items():
-            trail.add(frame.t, frame.markers[name])
+            if trails is not None and name in trails:
+                trail.replace(frame.t, trails[name])
+            else:
+                trail.add(frame.t, frame.markers[name])
         if self.options["trails"]:
             self._update_trails()
         self._update_outlines()

@@ -6,7 +6,7 @@ from functools import cache
 from pathlib import Path
 
 from qtpy.QtCore import QByteArray, QSize, Qt
-from qtpy.QtGui import QFontDatabase, QIcon, QPainter, QPixmap
+from qtpy.QtGui import QColor, QFontDatabase, QIcon, QPainter, QPalette, QPixmap
 from qtpy.QtSvg import QSvgRenderer
 from qtpy.QtWidgets import QApplication
 
@@ -35,7 +35,36 @@ def apply_theme(app: QApplication, theme: ThemeName) -> None:
     global _current
     _current = theme
     _icon.cache_clear()
+    app.setPalette(build_palette(theme))
     app.setStyleSheet(build_qss(theme))
+
+
+def build_palette(theme: ThemeName) -> QPalette:
+    """The Qt palette from the tokens, for widgets the stylesheet doesn't reach (scroll areas,
+    text views, plain frames). Without it they follow the OS (dark panels in the light theme
+    when Windows is in dark mode)."""
+    c = tokens.COLORS[theme]
+    pal = QPalette()
+    roles = {
+        QPalette.ColorRole.Window: "bg.app",
+        QPalette.ColorRole.Base: "bg.panel",
+        QPalette.ColorRole.AlternateBase: "bg.elevated",
+        QPalette.ColorRole.Button: "bg.elevated",
+        QPalette.ColorRole.ToolTipBase: "bg.elevated",
+        QPalette.ColorRole.WindowText: "text.primary",
+        QPalette.ColorRole.Text: "text.primary",
+        QPalette.ColorRole.ButtonText: "text.primary",
+        QPalette.ColorRole.ToolTipText: "text.primary",
+        QPalette.ColorRole.PlaceholderText: "text.secondary",
+        QPalette.ColorRole.Highlight: "accent.fill",
+        QPalette.ColorRole.HighlightedText: "text.on_accent",
+        QPalette.ColorRole.Accent: "accent",
+        QPalette.ColorRole.Link: "accent",
+        QPalette.ColorRole.Mid: "border.subtle",
+    }
+    for role, token in roles.items():
+        pal.setColor(role, QColor(c[token]))
+    return pal
 
 
 def current_theme() -> ThemeName:

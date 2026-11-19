@@ -10,7 +10,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M3: Physics + robots | ✅ Approved 2026-11-18 | `main` | SE-03, IO-01, TB-ROBOT (partial, D-023) |
 | M3b: Robotics depth (PRD 1.1) | ✅ Approved 2026-11-18 | `main` | RB-01–RB-12, TB-ROBOT (rest) |
 | M4: Viewport + IPC | ✅ Approved 2026-11-18 | `main` | SE-02, SE-10, VP-01–VP-07, VP-10, NF-04, NF-10, DS-04–DS-06 |
-| M5: Timeline + plots | Not started | | VP-05, DA-01–DA-04, DA-07, DS-09 |
+| M5: Timeline + plots | Built, **awaiting approval** | `m5-timeline-plots` | VP-05, DA-01–DA-04, DA-07, DS-09 |
 | M5b: Run investigation (PRD 1.2) | Not started | | RI-01–RI-06 |
 | M6–M10 | Not started | | see PRD §10 |
 
@@ -120,7 +120,50 @@ feel; the ViewCube's click-to-view animation; the light theme in the viewport; h
 how debug-draw lines look on macOS (its OpenGL draws wide lines another way; the GL tests
 check the batched geometry, not the pixels).
 
+## M5: Timeline + plots
+
+- Recording (D-049): the sim process records every tick (signals, markers, body poses) and
+  streams the rows to the UI with each state frame; `ui/timeline/history.py` holds them.
+- Timeline (D-048): scrub slider, step back `,` / forward `.`, start and live-end buttons, and
+  Play from a past row replays the recording at the playback speed, then hands over to the live
+  sim. The readout shows `t = … s / … s` and `live` or `replay`.
+- Signals panel: every logged channel grouped by entity, with units (D-052); drag (one signal or a
+  whole entity) onto the Plots panel, or double-click.
+- Plots (`ui/plots/`, pyqtgraph): time, XY, scatter, and histogram plots (D-051); the synced time
+  cursor; hover crosshair readout of every trace; hovering previews that time in the viewport,
+  clicking seeks; trace click selects the entity (DS-06); min/max thinning for speed (D-050).
+- Exports (D-053): Export Data (all signals) to CSV, Parquet, `.mat`; each plot to PNG or SVG in
+  the light theme.
+- M4 fixes found while checking on screen (D-054): the 3D view vanished from the main window once
+  a scene was opened; black panels in the light theme; OS accent colors on sliders and tree
+  selection; a pyqtgraph menu leak.
+- Done-when: scrubbing moves the viewport and plot cursor together within 100 ms ✅ (test, no-GL
+  view: every scrub < 100 ms with the viewport frame, plot cursor, and readout checked; GL test:
+  the real viewport re-posed and rendered, median < 100 ms; measured 54–73 ms at 1440×900 with
+  the UR5 and a plot).
+- Requirement IDs: VP-05 ✅ (scrubbing and step back added to M4's transport) DA-01 ✅ (10 × 100k
+  samples: median 25 ms per update, about 40 FPS) DA-02 ✅ DA-03 ✅ DA-04 ✅ DA-07 ✅ DS-09 ✅
+  (units on axes, light grid, legend top right, mono tick labels, 1.5 px data, 1 px accent cursor,
+  light-theme exports) DS-06 ✅ (plots and the signal tree now join the shared selection).
+- 294 tests (44 new; 13 of them `gl`); `simview/core` coverage 91%. New dependency: `pyqtgraph`.
+
+### Manual checks (visual, §0 rule 5)
+
+Checked from screen captures of the main window at 1440×900 in both themes, with the UR5 drag
+scene recorded and scrubbed: the 3D view in the central area, timeline (accent slider, readout),
+signal tree with units, time plots with legend, accent cursor, and hover readout, and a PNG export
+in the light theme. The captures found and fixed: the missing 3D view (D-054), black light-theme
+panels, OS-colored sliders and selection, values rescaled by SI prefixes (0.15 m shown as 150),
+legends clipping short plots, legend text invisible in light exports, truncated signal names (now
+elided in the middle so `.q`/`.v` stay visible), and a plot's x label cut off at the default
+panel height.
+
+Not checked by me (needs a person at the mouse): dragging signals from the tree onto plots (the
+tests drive the drop handler, not a real drag), how scrubbing and replay feel, zooming and panning
+a plot by hand, and the XY, scatter, and histogram plots by eye (tested, not screenshotted).
+
 ## Next
 
-1. Start **M5: Timeline + plots** (VP-05, DA-01–DA-04, DA-07, DS-09), then **M5b: Run
-   investigation** (RI-01–RI-06).
+1. Owner reviews M5 (`simview examples/ur5_ik_drag.py`, press Space, drag the target, pause,
+   then scrub the timeline and drag `tool_error` from Signals onto Plots).
+2. Start **M5b: Run investigation** (RI-01–RI-06).

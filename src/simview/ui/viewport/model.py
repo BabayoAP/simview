@@ -158,6 +158,11 @@ class Trail:
         while self.points and self.points[0][0] < t - self.seconds:
             self.points.popleft()
 
+    def replace(self, t: float, points: np.ndarray) -> None:
+        """Show a recorded path ending at time `t` (the timeline replays history, VP-05)."""
+        pts = np.asarray(points, dtype=np.float64)
+        self.points = deque(zip([t] * len(pts), pts, strict=True))  # rows are views, no copies
+
     def polyline(self) -> pv.PolyData | None:
         if len(self.points) < 2:
             return None

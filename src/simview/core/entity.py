@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import numpy as np
 
@@ -17,6 +17,8 @@ class Entity:
     """
 
     state_names: tuple[str, ...] = ()
+    # Units of named states for plot labels (DS-09), e.g. {"h": "m", "v": "m/s"}; optional.
+    state_units: Mapping[str, str] = {}
 
     def __init__(
         self,

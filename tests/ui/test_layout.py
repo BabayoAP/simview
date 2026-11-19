@@ -21,7 +21,7 @@ def test_default_panel_areas(qapp, settings):
         "console": A.BottomDockWidgetArea,
     }
     assert {n: w.dockWidgetArea(d) for n, d in w.docks.items()} == expected
-    assert w.centralWidget() is w.viewport
+    assert w.centralWidget().currentWidget() is w.viewport  # a stack: empty state, then 3D view
 
 
 def test_all_panels_dockable(qapp, settings):

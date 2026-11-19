@@ -4,6 +4,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest  # noqa: E402
 from qtpy.QtCore import QEvent, QSettings  # noqa: E402
+from qtpy.QtWidgets import QWidget  # noqa: E402
 
 from simview.ui.app import create_app  # noqa: E402
 
@@ -14,10 +15,15 @@ def qapp():
     yield app
     # Tear windows down while the QApplication is still alive. Leaving them to Python's
     # exit-time GC segfaults (Linux) or exits non-zero (Windows) after the tests pass.
-    for widget in app.topLevelWidgets():
-        widget.close()
-        widget.deleteLater()
-    app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    # Only unparented windows (a parented popup, like pyqtgraph's menus, goes with its owner),
+    # and plain QWidgets last: pyqtgraph keeps a hidden, parentless options widget per plot
+    # that must outlive the plot.
+    for strays in (False, True):
+        for widget in app.topLevelWidgets():
+            if widget.parent() is None and (type(widget) is QWidget) == strays:
+                widget.close()
+                widget.deleteLater()
+        app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     app.processEvents()
 
 

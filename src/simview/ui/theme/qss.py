@@ -150,6 +150,38 @@ QMenu::item:selected {{
     background: {c["accent.fill"]};
     color: {on_accent};
 }}
+QTreeView::item {{
+    min-height: {t.CONTROL_HEIGHT_COMPACT - t.SPACING[0]}px;
+}}
+QTreeView::item:hover {{
+    background: {c["bg.elevated"]};
+}}
+QTreeView::item:selected {{
+    background: {c["accent.fill"]};
+    color: {on_accent};
+}}
+QSlider::groove:horizontal {{
+    height: {t.SLIDER_GROOVE}px;
+    background: {c["border.subtle"]};
+    border-radius: {t.SLIDER_GROOVE // 2}px;
+}}
+QSlider::sub-page:horizontal {{
+    background: {c["accent"]};
+    border-radius: {t.SLIDER_GROOVE // 2}px;
+}}
+QSlider::handle:horizontal {{
+    width: {t.SLIDER_HANDLE}px;
+    margin: -{(t.SLIDER_HANDLE - t.SLIDER_GROOVE) // 2}px 0;
+    background: {c["text.primary"]};
+    border: {t.HAIRLINE}px solid {c["border.subtle"]};
+    border-radius: {t.SLIDER_HANDLE // 2}px;
+}}
+QSlider::handle:horizontal:hover, QSlider::handle:horizontal:pressed {{
+    border-color: {c["accent"]};
+}}
+QSlider::sub-page:horizontal:disabled {{
+    background: {c["text.secondary"]};
+}}
 QStatusBar {{
     background: {c["bg.panel"]};
     border-top: {t.HAIRLINE}px solid {c["border.subtle"]};

@@ -1,7 +1,7 @@
 """Panels that show a loaded scene: scene tree, inspector, console (VP-06, DS-06, NF-10).
 
 Selection and hover are synced through `select` / `set_hover` and the `selected` / `hovered`
-signals, so the viewport, tree, and inspector always agree (DS-06). Plots join in M5.
+signals, so the viewport, tree, inspector, signal tree, and plots always agree (DS-06).
 """
 
 from __future__ import annotations
@@ -209,12 +209,14 @@ class NoViewport(QWidget):
         self.frame: Frame | None = None
         self.selection: str | None = None
         self.draws: list[tuple] = []
+        self.trails: dict[str, np.ndarray] | None = None
 
     def load(self, desc: Description) -> None:
         self.desc = desc
 
-    def update_frame(self, frame: Frame) -> None:
+    def update_frame(self, frame: Frame, trails: dict[str, np.ndarray] | None = None) -> None:
         self.frame = frame
+        self.trails = trails
 
     def set_draws(self, draws: list[tuple]) -> None:
         self.draws = draws

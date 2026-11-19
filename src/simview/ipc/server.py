@@ -18,6 +18,7 @@ import numpy as np
 import zmq
 
 from simview.ipc import protocol as proto
+from simview.ipc.record import RowLayout, record_row, row_layout
 from simview.ipc.shm import Layout, StateBuffer
 
 PUBLISH_PERIOD = 1 / 120  # s of wall time between state frames (twice the 60 Hz render rate)
@@ -63,6 +64,8 @@ class Server:
         self._pace_wall = 0.0
         self._pace_sim = 0.0
         self._last_draws: list[tuple] | None = None
+        self.row_layout: RowLayout | None = None
+        self._rows: list[np.ndarray] = []  # recorded since the last publish
         self._rtf_samples: list[tuple[float, float]] = []  # (wall, sim t) over RTF_WINDOW
 
     # -- loading --------------------------------------------------------------------------
@@ -90,9 +93,21 @@ class Server:
         if self.buffer is not None:
             self.buffer.close(unlink=True)
         self.buffer = StateBuffer(layout, create=True)
+        self.row_layout = row_layout(scene, layout)
+        self._rows = []
         self.sock.send_pyobj(
-            {"event": proto.READY, "layout": layout, "shm": self.buffer.name, "description": desc}
+            {
+                "event": proto.READY,
+                "layout": layout,
+                "rows": self.row_layout,
+                "shm": self.buffer.name,
+                "description": desc,
+            }
         )
+        try:
+            self.record()
+        except Exception:  # noqa: BLE001 - a broken log channel must reach the console
+            self.error()
         self.publish(force=True)
         return True
 
@@ -101,6 +116,11 @@ class Server:
         self.sock.send_pyobj({"event": proto.ERROR, "traceback": traceback.format_exc()})
 
     # -- state out ------------------------------------------------------------------------------
+    def record(self) -> None:
+        """Queue the history row for the current tick (sent with the next publish)."""
+        assert self.row_layout is not None
+        self._rows.append(record_row(self.scene, self.sim, self.row_layout))
+
     def publish(self, force: bool = False) -> None:
         now = time.monotonic()
         if self.buffer is None or (not force and now - self._published < PUBLISH_PERIOD):
@@ -114,6 +134,9 @@ class Server:
             m, d = scene.world.model, scene.world.data
             mujoco.mj_kinematics(m, d)  # poses of the state just stepped to
             bodies = np.hstack([d.xpos, d.xquat])
+        if self._rows:
+            rows, self._rows = np.vstack(self._rows), []
+            self.sock.send_pyobj({"event": proto.ROWS, "rows": rows})
         layout = self.buffer.layout
         self.buffer.write(
             tick=sim.tick,
@@ -165,6 +188,7 @@ class Server:
             body.x[:3] = msg["pos"]
             body.x[3:7] = msg["quat"]
             body.x[7:] = 0.0  # a dragged object starts at rest
+            self.record()  # the current tick's row now shows the new pose
             self.publish(force=True)
         return True
 
@@ -182,6 +206,7 @@ class Server:
         try:
             for _ in range(n):
                 self.sim.step()
+                self.record()
         except Exception:  # noqa: BLE001 - user controller errors pause the run (NF-10)
             self.error()
             self.publish(force=True)  # the UI must see the run as paused

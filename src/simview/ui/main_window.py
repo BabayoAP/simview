@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from qtpy.QtWidgets import (
     QMainWindow,
     QMenu,
     QSizePolicy,
+    QStackedWidget,
     QTabWidget,
     QToolBar,
     QToolButton,
@@ -28,8 +30,13 @@ from simview.ui import theme
 from simview.ui.actions import ActionRegistry
 from simview.ui.command_palette import CommandPalette
 from simview.ui.panels import EmptyState
+from simview.ui.plots.panel import PlotPanel
+from simview.ui.plots.signals import SignalTree
 from simview.ui.sim_panels import Console, Inspector, NoViewport, SceneTree
 from simview.ui.theme import icon, tokens
+from simview.ui.timeline.history import History
+from simview.ui.timeline.playback import Playback
+from simview.ui.timeline.widget import Timeline
 
 # SE-10 playback speeds; 0 = as fast as possible.
 SPEEDS = (
@@ -53,7 +60,7 @@ DOCKS: tuple[tuple[str, str, Qt.DockWidgetArea], ...] = (
     ("plots", "Plots", Qt.DockWidgetArea.BottomDockWidgetArea),
     ("console", "Console / Editor", Qt.DockWidgetArea.BottomDockWidgetArea),
 )
-LAYOUT_VERSION = 1
+LAYOUT_VERSION = 2  # 2: M5 panels; drops layouts saved with the M4 collapsed-viewport bug
 
 UNTITLED = "untitled"
 
@@ -85,7 +92,17 @@ class MainWindow(QMainWindow):
         self.scene_tree: SceneTree | None = None
         self.inspector: Inspector | None = None
         self.console: Console | None = None
-        self.running = False
+        self.signal_tree: SignalTree | None = None
+        self.plots: PlotPanel | None = None
+        self.timeline: Timeline | None = None
+        self.history: History | None = None
+        self.playback = Playback(_SimControls(self))  # VP-05: live or a recorded row (D-048)
+        self._live_frame: Any = None
+        self._live_draws: list[tuple] = []
+        self._drawn: list[tuple] | None = None
+        self._shown: tuple | None = None
+        self._last_tick_at = 0.0
+        self._plots_at = 0.0
         self.timer = QTimer(self)
         self.timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.timer.timeout.connect(self._tick)
@@ -112,6 +129,10 @@ class MainWindow(QMainWindow):
         reg("sim.stop", "Stop and Reset", self.stop, None, "Simulation")
         reg("sim.toggle", "Run / Pause", self.toggle_run, "Space", "Simulation")
         reg("sim.step", "Step Forward One Tick", self.step, ".", "Simulation")
+        reg("sim.step_back", "Step Back One Tick", self.step_back, ",", "Simulation")
+        reg("timeline.start", "Go to Start of Recording", self.to_start, None, "Simulation")
+        reg("timeline.live", "Go to Live (End of Recording)", self.to_live, None, "Simulation")
+        reg("plots.export_data", "Export Data…", self.export_data_dialog, None, "File")
         reg("view.theme", "Toggle Light/Dark Theme", self.toggle_theme, None, "View")
         reg("view.reset_layout", "Reset Layout", self.reset_layout, None, "View")
         for name, title, _ in DOCKS:
@@ -146,6 +167,8 @@ class MainWindow(QMainWindow):
         self.settings.setValue("theme", new)
         if self.sim_view is not None:
             self.sim_view.set_theme(new)
+        if self.plots is not None:
+            self.plots.set_theme(new)
 
     # ----- chrome --------------------------------------------------------------------
     def _build_menu(self) -> None:
@@ -218,7 +241,12 @@ class MainWindow(QMainWindow):
             "box", "No scene loaded.", "Open Template…", self.show_start_screen.emit
         )
         self.viewport.setObjectName("CentralArea")
-        self.setCentralWidget(self.viewport)
+        # One central widget for the window's life: replacing QMainWindow's central widget after
+        # the docks are laid out left it zero-wide (the 3D view vanished, docks took the space).
+        self.central = QStackedWidget(self)
+        self.central.setObjectName("CentralArea")
+        self.central.addWidget(self.viewport)
+        self.setCentralWidget(self.central)
 
     def _dock_content(self, name: str) -> QWidget:
         a = self.actions_.get
@@ -378,7 +406,8 @@ class MainWindow(QMainWindow):
         self._ensure_scene_panels()
         self.client = SimClient()
         self.client.start(self.scene_path)
-        self.running = False
+        self.playback.sim_running = False
+        self.playback.reset(None)
         self.timer.start(int(1000 / tokens.VIEWPORT_FPS))
         self.statusBar().showMessage(f"Loading {self.scene_path.name}…")
 
@@ -403,13 +432,34 @@ class MainWindow(QMainWindow):
             return
         self.sim_view = self._make_viewport()
         self.sim_view.setObjectName("CentralArea")
-        self.setCentralWidget(self.sim_view)
+        self.central.addWidget(self.sim_view)
+        self.central.setCurrentWidget(self.sim_view)
         self.viewport = self.sim_view
         self.scene_tree = SceneTree()
         self.inspector = Inspector()
         self.console = Console()
+        a = self.actions_.get
+        self.timeline = Timeline(
+            {
+                "start": a("timeline.start"),
+                "back": a("sim.step_back"),
+                "toggle": a("sim.toggle"),
+                "forward": a("sim.step"),
+                "live": a("timeline.live"),
+            }
+        )
+        self.signal_tree = SignalTree()
+        self.plots = PlotPanel(self._focus_dock("signals"))
         self.docks["scene_tree"].setWidget(self.scene_tree)
         self.docks["inspector"].setWidget(self.inspector)
+        self.docks["timeline"].setWidget(self.timeline)
+        self.docks["signals"].setWidget(self.signal_tree)
+        self.docks["plots"].setWidget(self.plots)
+        self.timeline.seek.connect(self.seek)
+        self.signal_tree.activated.connect(self.plots.plot_signals)
+        self.plots.seek_time.connect(self.seek_time)
+        self.plots.hover_time.connect(self._plot_hover)
+        self.plots.export_data.connect(self.export_data_dialog)
         tabs = self.docks["console"].widget()
         if isinstance(tabs, QTabWidget):
             tabs.removeTab(0)
@@ -421,6 +471,9 @@ class MainWindow(QMainWindow):
         view.hovered.connect(tree.set_hover)
         tree.selected.connect(self._select)
         tree.hovered.connect(view.set_hover)
+        self.signal_tree.selected.connect(self._select)
+        self.signal_tree.hovered.connect(self._hover)
+        self.plots.selected.connect(self._select)
         view.target_moved.connect(self._target_moved)
         view.body_moved.connect(self._body_moved)
 
@@ -436,8 +489,16 @@ class MainWindow(QMainWindow):
         assert self.scene_tree is not None and self.inspector is not None
         self.sim_view.select(name)
         self.scene_tree.select(name)
+        if self.signal_tree is not None and self.plots is not None:
+            self.signal_tree.select(name)
+            self.plots.set_selection(name)
         desc = self.client.description if self.client is not None else None
         self.inspector.show_entity(desc, name)
+
+    def _hover(self, name: str | None) -> None:
+        assert self.scene_tree is not None
+        self.sim_view.set_hover(name)
+        self.scene_tree.set_hover(name)
 
     def _tick(self) -> None:
         """Poll the sim process and redraw (VIEWPORT_FPS)."""
@@ -446,20 +507,24 @@ class MainWindow(QMainWindow):
         client = self.client
         if client is None:
             return
-        draws = None
         for ev in client.poll():
             kind = ev["event"]
             if kind == proto.READY:
                 self._on_ready(ev["description"])
+            elif kind == proto.ROWS:
+                if self.history is not None:
+                    self.history.append(ev["rows"])
             elif kind == proto.DRAWS:
-                draws = ev["draws"]  # only the newest set is drawn (draws can change every tick)
+                self._live_draws = ev["draws"]  # the newest set (draws can change every tick)
+                if self.history is not None:
+                    self.history.add_draws(ev["tick"], ev["draws"])
             elif kind == proto.LOG:
                 assert self.console is not None
                 token = "state.error" if ev["stream"] == "stderr" else "text.primary"
                 self.console.write(ev["text"], token)
             elif kind == proto.ERROR:
                 assert self.console is not None
-                self.running = False
+                self.playback.sim_stopped()
                 self.console.write(ev["traceback"], "state.error")
                 self._focus_dock("console")()
                 self.statusBar().showMessage(
@@ -467,53 +532,118 @@ class MainWindow(QMainWindow):
                 )
             elif kind == proto.STOPPED:
                 self._on_stopped(ev.get("exitcode"))
-        if draws is not None:
-            self.sim_view.set_draws(draws)
+        now = time.monotonic()
+        wall_dt, self._last_tick_at = now - self._last_tick_at, now
+        self.playback.advance(min(wall_dt, 0.1), float(self.speed_box.currentData()))
         frame = client.frame()
         if frame is not None:
-            self.sim_view.update_frame(frame)
-            if self.inspector is not None:
-                self.inspector.update_frame(frame)
+            self._live_frame = frame
             speed = "max" if frame.speed <= 0 else f"{frame.speed:g}×"
             self.rtf_label.setText(f"RTF {frame.rtf:.2f}× ({speed})")
+        self.show_time()
+        if self.plots is not None and now - self._plots_at >= 1.0 / tokens.PLOT_FPS:
+            self._plots_at = now
+            self.plots.refresh()
+
+    def show_time(self) -> None:
+        """Show the timeline's moment (live or recorded) everywhere at once (VP-05, DA-02)."""
+        pb, h = self.playback, self.history
+        shown = pb.shown
+        frame = self._live_frame
+        trails = None
+        draws = self._live_draws
+        row = -1
+        if h is not None and h.n:
+            row = h.n - 1 if shown is None else min(shown, h.n - 1)
+            if shown is not None:
+                frame = h.frame(row, self._live_frame)
+                draws = h.draws_at(int(h.ticks[row]))
+            trails = h.trails(row, self._trail_seconds())
+        key = (shown, h.version if h is not None else 0, id(frame), id(draws))
+        if frame is not None and key != self._shown:
+            self._shown = key
+            if draws is not self._drawn:
+                self._drawn = draws
+                self.sim_view.set_draws(draws)
+            self.sim_view.update_frame(frame, trails)
+            if self.inspector is not None:
+                self.inspector.update_frame(frame)
+        if self.plots is not None:
+            self.plots.set_cursor(pb.index if row >= 0 else None, pb.preview)
+        if self.timeline is not None and h is not None and h.n:
+            self.timeline.show_state(
+                pb.index,
+                pb.last,
+                h.time_of(pb.index),
+                h.time_of(pb.last),
+                live=pb.live,
+                playing=pb.running,
+            )
         self.sim_view.render()
+
+    def _trail_seconds(self) -> dict[str, float]:
+        desc = self.client.description if self.client is not None else None
+        if desc is None:
+            return {}
+        return {
+            e.name: desc.trails.get(e.name, (tokens.TRAIL_SECONDS, None))[0]
+            for e in desc.entities
+            if e.has_marker
+        }
 
     def _on_ready(self, desc: Any) -> None:
         assert self.scene_tree is not None and self.inspector is not None
         self.sim_view.load(desc)
         self.scene_tree.load(desc)
         self.inspector.show_entity(desc, None)
+        layout = self.client.row_layout
+        self.history = History(layout, desc.dt) if layout is not None else None
+        self.playback.reset(self.history)
+        self._live_draws, self._drawn, self._shown = [], None, None
+        if layout is not None:
+            assert self.signal_tree is not None and self.plots is not None
+            self.signal_tree.load(layout)
+            self.plots.set_history(self.history)
         self.dt_label.setText(f"dt {desc.dt * 1e3:g} ms")
         self.client.set_speed(float(self.speed_box.currentData()))
         self.statusBar().showMessage(f"{self.scene_path.name} loaded.", 3000)
-        if self.running:
-            self.client.play()
+        if self.playback.sim_running:
+            self.client.play()  # Run was pressed while the scene loaded
 
     def _on_stopped(self, code: int | None) -> None:
         """NF-10: the sim process died; the UI stays up and Run starts a new one."""
         assert self.console is not None
-        self.running = False
+        self.playback.sim_stopped()
         if code not in (0, None):
             msg = f"The sim process exited (code {code}). Run restarts it."
             self.console.write(msg + "\n", "state.error")
             self.statusBar().showMessage(msg, 6000)
 
     # ----- run controls --------------------------------------------------------------
-    def run(self) -> None:
+    @property
+    def running(self) -> bool:
+        """Time is moving: the live sim runs, or the timeline replays the recording."""
+        return self.playback.running
+
+    def _has_scene(self) -> bool:
         if self.client is None:
             self._no_scene()
-            return
-        if not self.client.alive and self.scene_path is not None:
+            return False
+        return True
+
+    def _transport(self, action: Callable[[], None]) -> None:
+        if self._has_scene():
+            action()
+            self.show_time()
+
+    def run(self) -> None:
+        if self._has_scene() and not self.client.alive and self.scene_path is not None:
             self.client.start(self.scene_path)  # after a crash: a fresh sim process
-        self.running = True
-        self.client.play()
+            self.playback.reset(None)
+        self._transport(self.playback.play)
 
     def pause(self) -> None:
-        if self.client is None:
-            self._no_scene()
-            return
-        self.running = False
-        self.client.pause()
+        self._transport(self.playback.pause)
 
     def toggle_run(self) -> None:
         if self.running:
@@ -522,20 +652,78 @@ class MainWindow(QMainWindow):
             self.run()
 
     def step(self) -> None:
-        if self.client is None:
-            self._no_scene()
-            return
-        self.running = False
-        self.client.step()
+        self._transport(self.playback.step_forward)
+
+    def step_back(self) -> None:
+        self._transport(self.playback.step_back)
+
+    def to_start(self) -> None:
+        self._transport(self.playback.to_start)
+
+    def to_live(self) -> None:
+        self._transport(self.playback.to_live)
+
+    def seek(self, index: int) -> None:
+        """Scrub to history row `index` (VP-05): viewport, plots, and timeline follow at once."""
+        self._transport(lambda: self.playback.seek(index))
+
+    def seek_time(self, t: float) -> None:
+        if self.history is not None and self.history.n:
+            self.seek(self.history.index_at(t))
+
+    def _plot_hover(self, t: float | None) -> None:
+        """DA-02: hovering a plot shows that moment in the viewport until the mouse leaves."""
+        h = self.history
+        self.playback.preview = h.index_at(t) if t is not None and h is not None and h.n else None
+        if self.client is not None:
+            self.show_time()
 
     def stop(self) -> None:
         """Stop and reset: the scene file is loaded again from the start."""
-        if self.client is None:
-            self._no_scene()
+        if self._has_scene():
+            self.playback.pause()
+            self.client.reset()
+
+    def export_data_dialog(self) -> None:
+        """DA-07: every logged signal of the recorded run to CSV, Parquet, or .mat."""
+        if self.history is None or not self.history.n:
+            self.statusBar().showMessage("Run a simulation first: there is no data yet.", 4000)
             return
-        self.running = False
-        self.client.reset()
+        stem = self.scene_path.stem if self.scene_path is not None else "run"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Data", f"{stem}.csv", "CSV (*.csv);;Parquet (*.parquet);;MATLAB (*.mat)"
+        )
+        if path:
+            self.export_data(path)
+
+    def export_data(self, path: str | Path) -> Path:
+        from simview.io.export import write_table
+
+        assert self.history is not None
+        meta = {"scene": str(self.scene_path)} if self.scene_path is not None else {}
+        out = write_table(self.history.table(meta), path)
+        self.statusBar().showMessage(f"Exported {self.history.n} rows to {out}", 4000)
+        return out
 
     def _speed_changed(self) -> None:
         if self.client is not None:
             self.client.set_speed(float(self.speed_box.currentData()))
+
+
+class _SimControls:
+    """What the playback asks of the sim process (play, pause, one step)."""
+
+    def __init__(self, window: MainWindow) -> None:
+        self.window = window
+
+    def play(self) -> None:
+        if self.window.client is not None:
+            self.window.client.play()
+
+    def pause(self) -> None:
+        if self.window.client is not None:
+            self.window.client.pause()
+
+    def step(self, n: int = 1) -> None:
+        if self.window.client is not None:
+            self.window.client.step(n)

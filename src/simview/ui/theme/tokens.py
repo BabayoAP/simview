@@ -75,6 +75,8 @@ RADIUS_FLOATING: Final = 10
 CONTROL_HEIGHT: Final = 28
 CONTROL_HEIGHT_COMPACT: Final = 24
 HAIRLINE: Final = 1
+SLIDER_GROOVE: Final = 4  # px, slider track (timeline scrubber, inspector sliders)
+SLIDER_HANDLE: Final = 12  # px, slider knob
 FOCUS_RING: Final = 2
 
 # Layout (px), default Simulate workspace (§7.4).
@@ -113,6 +115,19 @@ ORBIT_DEG_PER_PX: Final = 0.4
 ZOOM_STEP: Final = 0.15  # fraction of the distance to the cursor point per wheel notch
 FLY_STEP: Final = 0.02  # fraction of the scene size per fly-mode key event
 DRAW_POINT_SIZE: Final = 8  # px, debug-draw default (VP-07)
+
+# Timeline (§7.4) and plots (§7.6).
+TIMELINE_READOUT_WIDTH: Final = 230  # px, fits "t = 1234.567 s / 1234.567 s  replay"
+PLOT_LINE_WIDTH: Final = 1.5  # px, data
+PLOT_REF_WIDTH: Final = 1  # px, reference lines and the time cursor
+PLOT_SELECTED_WIDTH: Final = 3  # px, traces of the selected entity (DS-06)
+PLOT_GRID_ALPHA: Final = 0.35  # light grid
+PLOT_FILL_ALPHA: Final = 90  # 0-255, histogram bar fill
+PLOT_SYMBOL_SIZE: Final = 5  # px, scatter points
+PLOT_CURSOR_SYMBOL: Final = 9  # px, the time-cursor dot on XY and scatter plots
+PLOT_MIN_HEIGHT: Final = 100  # one plot fits the default bottom row without scrolling
+PLOT_FPS: Final = 30  # redraw rate while data streams in (DA-01)
+PLOT_EXPORT_SCALE: Final = 2  # PNG exports at 2x the on-screen size
 
 # Motion (ms).
 MOTION_FAST: Final = 150

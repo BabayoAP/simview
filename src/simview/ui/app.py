@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from qtpy.QtCore import QSettings
+from qtpy.QtCore import QSettings, Qt
 from qtpy.QtGui import QFont
 from qtpy.QtWidgets import QApplication
 
@@ -24,6 +24,9 @@ def default_settings() -> QSettings:
 def create_app(argv: list[str] | None = None, theme_name: ThemeName | None = None) -> QApplication:
     app = QApplication.instance()
     if not isinstance(app, QApplication):
+        # VTK's view is a native window; by default Qt then makes its siblings (the docks)
+        # native too, and those skip their themed background (black panels in the light theme).
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_DontCreateNativeWidgetSiblings)
         app = QApplication(argv if argv is not None else sys.argv)
     app.setApplicationName("SimView")
     app.setOrganizationName("SimView")
