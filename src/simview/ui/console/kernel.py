@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import html
 import os
+import weakref
 from collections.abc import Callable
 from functools import cache
 from typing import Any
@@ -67,11 +68,10 @@ class ConsoleWidget(RichJupyterWidget):
         self.kernel_manager = km
         self.kernel_client = km.client()
         self.kernel_client.start_channels()
-        self.destroyed.connect(lambda _o=None, kc=self.kernel_client: kc.stop_channels())
         self.set_theme(theme.current_theme())
-        self._hook: Callable[[], None] = self.namespace_changed.emit
-        self.shell.events.register("post_execute", self._hook)
-        self.destroyed.connect(lambda _o=None, hook=self._hook: _unregister(hook))
+        # A weak hook, dropped once this widget is gone. No `destroyed` handlers: Qt can fire
+        # them during interpreter shutdown, and Python code run then can crash it.
+        self.shell.events.register("post_execute", _weak_hook(self))
 
     @property
     def shell(self) -> Any:
@@ -123,12 +123,21 @@ def shutdown() -> None:
     must not be left to the interpreter's exit-time garbage collection."""
     if kernel_manager.cache_info().currsize:
         km = kernel_manager()
+        km.kernel.shell.events.callbacks["post_execute"].clear()
         km.shutdown_kernel()
         kernel_manager.cache_clear()
 
 
-def _unregister(hook: Callable[[], None]) -> None:
-    try:
-        kernel_manager().kernel.shell.events.unregister("post_execute", hook)
-    except ValueError:
-        pass
+def _weak_hook(widget: ConsoleWidget) -> Callable[[], None]:
+    ref = weakref.ref(widget)
+
+    def hook() -> None:
+        w = ref()
+        try:
+            if w is None:
+                raise RuntimeError
+            w.namespace_changed.emit()
+        except RuntimeError:  # collected, or its Qt object was deleted
+            kernel_manager().kernel.shell.events.unregister("post_execute", hook)
+
+    return hook
