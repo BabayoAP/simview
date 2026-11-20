@@ -10,6 +10,7 @@ because Qt widgets overlaid on an OpenGL surface don't composite reliably on eve
 from __future__ import annotations
 
 import time
+import weakref
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -133,6 +134,10 @@ class Viewport(QWidget):
     def _install_input(self) -> None:
         iren = self.plotter.iren.interactor
         self._style = vtk.vtkInteractorStyleUser()
+        # PyVista's gizmo and pick callbacks find the plotter through the style's `_parent`
+        # (set on PyVista's own styles). Without it every mouse move raises inside them, the
+        # gizmo never highlights a handle, and so it can't be grabbed.
+        self._style._parent = weakref.ref(self.plotter.iren)
         iren.SetInteractorStyle(self._style)
         self._gizmo_drag = False
         for ev in (
