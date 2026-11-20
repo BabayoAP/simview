@@ -650,9 +650,36 @@ the account's Actions minutes. CI now triggers on `workflow_dispatch` and on pul
 `main` (docs-only changes skipped). Branch work is verified locally; the 3-OS run happens once
 per milestone, before the owner merges.
 
+## M8: Sensors and draws
+
+**D-089 — A controller's draws last until it runs again.** Before M8 every non-persistent draw
+lasted one tick, so a 10 Hz controller on a 1 kHz scene showed its draws for 1 tick in 100.
+Draws made inside a controller now belong to it and are replaced the next time it runs; draws
+made outside a controller still last one tick; `persist=True` and `clear()` are unchanged.
+
+**D-090 — Solids for custom-model entities.** `scene.attach_shape(entity, shape, size, ...)`
+adds a MuJoCo mocap body that follows the entity's `pose()` each tick, so lidar and cameras see
+it and the viewport draws (and selects) it. It is kinematic: it pushes free objects, nothing
+pushes it.
+
+**D-091 — Sensor timing and noise.** A sensor samples once at the start of a run, then at the
+end of every tick that is a multiple of its period, so a controller at tick k reads the state at
+tick k, and it holds its reading in between. Its rate must divide 1/dt. Each sensor has its own
+noise generator, seeded from the scene seed and its full name, so adding a sensor doesn't
+change the others' noise. The IMU differentiates the entity's velocity and orientation over its
+sample period (any entity works); its first sample reads -g and zero rate.
+
+**D-092 — Seeker angles.** Range, bearing and elevation to the target are in the world frame at
+the sensor (a stabilized seeker): bearing atan2(dy, dx), elevation atan2(dz, horizontal
+distance), with white noise per channel.
+
+**D-093 — The camera is ray cast, not rendered.** One MuJoCo ray per pixel on the CPU (geom
+color shaded by incidence angle, sky color on a miss) instead of an OpenGL render, so it works
+headless and gives the same image on every machine. Default 160x120 at 10 Hz.
+
 ## M8: Vehicles toolbox
 
-**D-091 — Paths and roads (TB-VEH).** A path is a 2-D polyline (`sv.vehicles.Path`) with arc
+**D-094 — Paths and roads (TB-VEH).** A path is a 2-D polyline (`sv.vehicles.Path`) with arc
 length, `point_at` / `heading_at` (clamped to the ends) and `nearest`, whose `cross_track` is
 positive left of the path. Road and lane primitives are data, not MuJoCo geometry: a `Road` is
 a centerline with N lanes of equal width, lane 0 the rightmost (drive on the right); lanes and
@@ -660,17 +687,17 @@ edges are mitred offsets of the centerline. `road.draw(ctx.draw)` draws edges an
 dividers as persistent debug lines (call it once, at t = 0). Lidar doesn't see the road
 surface; NPCs get solids with `scene.attach_shape` (D-090) when sensors should see them.
 
-**D-092 — Kinematic bicycle.** Reference point is the rear axle; states x, y, yaw, v; input
+**D-095 — Kinematic bicycle.** Reference point is the rear axle; states x, y, yaw, v; input
 `u = [accel, steer]`, clipped to `max_accel` / `max_steer` (35° default), speed held within
 [`min_speed`, `max_speed`] (0 to 40 m/s, so no reversing by default). Wheelbase 2.7 m default.
 
-**D-093 — Path trackers.** Pure pursuit uses lookahead `gain * v + min_lookahead` (0.5 s,
+**D-096 — Path trackers.** Pure pursuit uses lookahead `gain * v + min_lookahead` (0.5 s,
 3 m) with the goal searched forward from the nearest point; Stanley uses the front-axle
 cross-track error with a softening speed (1 m/s). Both are plain callables
 `ctrl(x, y, yaw, v) -> steer`, so they work in script controllers and are easy to wrap as
 blocks later; `speed_control` is a clipped P-controller on speed.
 
-**D-094 — Scripted NPCs.** `ScriptedNPC` follows a path at a speed given as a constant, a
+**D-097 — Scripted NPCs.** `ScriptedNPC` follows a path at a speed given as a constant, a
 (t, v) schedule (linear between points) or a function of t; it has no dynamics and doesn't
 react to other agents (the PRD's "scripted"). Arc length advances by the trapezoid rule, exact
 for piecewise-linear schedules. At the path's end it stops, or starts over with `loop=True`.

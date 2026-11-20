@@ -15,7 +15,7 @@ class KinematicBicycle(Entity):
     yaw' = v tan(steer) / wheelbase, v' = accel.
 
     Inputs `u = [accel, steer]` (m/s^2, rad) are clipped to `max_accel` / `max_steer`; speed is
-    kept within [`min_speed`, `max_speed`] (D-092). An empty `u` coasts straight."""
+    kept within [`min_speed`, `max_speed`] (D-095). An empty `u` coasts straight."""
 
     state_names = ("x", "y", "yaw", "v")
     state_units = {"x": "m", "y": "m", "yaw": "rad", "v": "m/s"}

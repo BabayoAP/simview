@@ -23,7 +23,7 @@ class PurePursuit:
     """Pure pursuit: steer along the circle through the rear axle and a goal point one
     lookahead distance ahead on the path, `steer = atan(2 L sin(alpha) / ld)`.
 
-    The lookahead is `gain * v + min_lookahead` (D-093). The goal is searched forward from the
+    The lookahead is `gain * v + min_lookahead` (D-096). The goal is searched forward from the
     vehicle's nearest point; `goal` keeps the last one (for drawing)."""
 
     path: Path

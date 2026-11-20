@@ -1,5 +1,5 @@
 """Scripted NPC agents (TB-VEH, UC-1's traffic): vehicles that follow a path on a speed
-schedule, without dynamics or reaction to others (D-094)."""
+schedule, without dynamics or reaction to others (D-097)."""
 
 from __future__ import annotations
 
