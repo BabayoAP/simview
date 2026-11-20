@@ -13,7 +13,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M5: Timeline + plots | ✅ Approved 2026-11-19 | `main` | VP-05, DA-01–DA-04, DA-07, DS-09 |
 | M5b: Run investigation (PRD 1.2) | ✅ Approved 2026-11-19 | `main` | RI-01–RI-06 |
 | M6: Console + workspace | ✅ Approved 2026-11-19 | `main` | SC-01–SC-05, IO-02, IO-04 |
-| M7: Block editor | ✅ Approved 2026-11-20 (CI pending: account billing) | `main` | BD-01–BD-08, DS-10 |
+| M7: Block editor | ✅ Approved 2026-11-20 (CI: green except macOS GL, see Next) | `main` | BD-01–BD-08, DS-10 |
 | M8: Sensors + Aero/Vehicles toolboxes | In progress | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
 | M9–M10 | Not started | | see PRD §10 |
 
@@ -292,7 +292,30 @@ Scope plot, and the toolbar's page switch. Problems (missing entity, unconnected
 as red outlines with the message under each block. Not checked by eye: dragging, the
 quick-add popup, and the wire-hover tooltip on a real display (all three are tested).
 
+## M8: Sensors + Aero/Vehicles toolboxes (in progress)
+
+- Part 1 (`3193fd1`): sensors in `simview/sensors/` (IMU, GPS, seeker, camera, lidar) mounted
+  with `entity.attach(...)` and logged as `<entity>.<sensor>.<field>`; `scene.attach_shape`
+  gives custom entities a MuJoCo solid (D-090); `ctx.draw.points` / `ellipsoid` (VP-08, VP-09);
+  a controller's draws last until it runs again (D-089). D-089..D-093. **No sensor tests yet.**
+- Part 2 (`9334f83`): Vehicles toolbox `sv.vehicles` (TB-VEH): kinematic bicycle, paths and
+  roads with lanes, pure pursuit, Stanley, speed control, scripted NPCs (D-094..D-097);
+  15 tests in `tests/toolboxes/vehicles/`.
+- Part 3 (`2681d86`): UC-1 Autonomous Vehicle template (`src/simview/templates/av_scenario/`),
+  loaded by its start-screen card (D-098). A 30 s run: about 27x real time headless, lane kept
+  within 8 cm through the bend, 8.7 m closest gap behind the braking NPC, settles at 18 m /
+  8 m/s; 5 tests (`tests/templates/`, `tests/ui/test_scene_session.py`).
+- 403 tests pass locally (Mac, Python 3.12, offline: 4 skipped; GL tests not run), lint clean.
+- To do: sensor tests (SN-01..SN-03, VP-08, VP-09), the Aerospace toolbox (quadrotor, PN,
+  EKF: TB-AERO), the UC-2 Drone Interception template, the GL check of point clouds and
+  ellipsoids, then requirement mapping and the M8 sign-off.
+
 ## Next
 
-1. M8 (PRD §10), on `m8-sensors-aero-vehicles`, with a pull request into `main` opened early so CI
-   runs on it once the account's Actions billing is fixed (M7 hasn't had a CI run yet).
+1. Finish M8 (list above) on `m8-sensors-aero-vehicles`, then open a PR into `main` for CI.
+2. macOS GL CI: the repo is public since 2026-11-20, so Actions runs again. The first run on
+   `main` (M7) is green except `gl (macos-latest)`, which crashes (exit 133) in
+   `test_scrubbing_redraws_the_real_viewport_within_100_ms`, the only GL test that opens the
+   whole main window; reproducible on re-run. It passed on M6 with the same dependency
+   versions, so suspect M7's main-window changes. Not bisected yet (can't be run from a
+   Claude terminal: try it locally, or bisect on a debug branch).
