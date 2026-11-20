@@ -131,7 +131,59 @@ class Scene:
             world.members.remove(entity)
             self.physics().adopt(entity)
         self.entities[entity.name] = entity
+        entity.scene = self
+        for sensor in entity.sensors.values():
+            self._add_sensor(sensor)
         return entity
+
+    def _add_sensor(self, sensor: Any) -> None:
+        """Check a sensor's rate and log its fields as `<entity>.<sensor>.<field>` (SN-01)."""
+        ticks = 1.0 / (sensor.rate * self.dt)
+        if abs(ticks - round(ticks)) > 1e-9 or round(ticks) < 1:
+            raise ValueError(
+                f"{sensor.entity.name}.{sensor.name}: rate {sensor.rate} Hz must divide "
+                f"1/dt = {1 / self.dt:g} Hz"
+            )
+        for i, f in enumerate(sensor.fields):
+            channel = f"{sensor.entity.name}.{sensor.name}.{f}"
+            self.channels[channel] = lambda sim, s=sensor, i=i: float(s.value[i])
+            self.channel_units[channel] = sensor.units.get(f, "")
+
+    def sensors(self) -> list[Any]:
+        """Every attached sensor, in entity order."""
+        return [s for e in self.entities.values() for s in e.sensors.values()]
+
+    def attach_shape(
+        self,
+        entity: str | Entity,
+        shape: str,
+        size: Sequence[float],
+        *,
+        pos: Sequence[float] = (0.0, 0.0, 0.0),
+        quat: Sequence[float] = (1.0, 0.0, 0.0, 0.0),
+        rgba: Sequence[float] | None = None,
+    ) -> None:
+        """Give a custom-model entity a solid that follows its `pose()` in the MuJoCo world
+        (D-090), so lidar and cameras see it and the viewport draws it. `shape` and `size` are
+        as in `add_box` etc. (full sizes in metres); `pos`/`quat` place it in the entity's
+        frame. It's kinematic: it pushes free objects but nothing pushes it."""
+        from simview.physics.world import Shape, _half_size
+
+        e = self.entities[entity] if isinstance(entity, str) else entity
+        if self.entities.get(e.name) is not e:
+            raise ValueError(f"add {e.name!r} to the scene before giving it a shape")
+        if getattr(e, "world", None) is not None:
+            raise ValueError(f"{e.name} is already in the MuJoCo world")
+        item = Shape(
+            name=e.name,
+            shape=shape,
+            size=_half_size(shape, size),
+            pos=[float(v) for v in pos],
+            quat=[float(v) for v in quat],
+            friction=[1.0, 0.005, 0.0001],
+            rgba=None if rgba is None else [float(v) for v in rgba],
+        )
+        self.physics().add_proxy(e, item)
 
     # -- MuJoCo world (RB-01..RB-05) ---------------------------------------------------------
     def add_robot(

@@ -39,18 +39,37 @@ class Sim:
         self.controllers = [
             (c, 1 if c.rate is None else round(1.0 / (c.rate * self.dt))) for c in scene.controllers
         ]
+        # Sensors sample at the end of every `period`-th tick, and once at the start, so a
+        # controller at tick k reads the measurement of the state at tick k (SN-01).
+        self.sensors = [(s, round(1.0 / (s.rate * self.dt))) for s in scene.sensors()]
+        for s, _ in self.sensors:
+            s.reset(self)
+        self._sample(force=True)
 
     @property
     def t(self) -> float:
         # Integer tick count times dt: no drift from summing dt.
         return self.tick * self.dt
 
+    def _sample(self, force: bool = False) -> None:
+        due = [s for s, period in self.sensors if force or self.tick % period == 0]
+        if not due:
+            return
+        if self.scene.world is not None and any(s.uses_world for s in due):
+            self.scene.world.kinematics()  # ray casts need this tick's geometry
+        for s in due:
+            s.sample(self)
+
     def step(self) -> None:
         t = self.t
         self.draw.new_tick()
-        for c, period in self.controllers:
+        for i, (c, period) in enumerate(self.controllers):
             if self.tick % period == 0:
-                out = c.fn(t, self.scene, Context(self, period * self.dt))
+                self.draw.begin(i)  # this controller's previous draws are replaced (D-089)
+                try:
+                    out = c.fn(t, self.scene, Context(self, period * self.dt))
+                finally:
+                    self.draw.end()
                 for name, u in (out or {}).items():
                     self.scene[name].u = np.asarray(u, dtype=np.float64)
         for e in self.scene.entities.values():
@@ -58,3 +77,5 @@ class Sim:
         if self.scene.world is not None:
             self.scene.world.step(t, self.dt)
         self.tick += 1
+        if self.sensors:
+            self._sample()

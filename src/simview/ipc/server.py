@@ -168,7 +168,7 @@ class Server:
             bodies=bodies,
         )
         draws = proto.draws_payload(sim.draw.snapshot())
-        if draws != self._last_draws:
+        if not proto.same_draws(self._last_draws, draws):
             self._last_draws = draws
             self.sock.send_pyobj({"event": proto.DRAWS, "draws": draws, "tick": sim.tick})
 

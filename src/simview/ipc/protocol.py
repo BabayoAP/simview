@@ -158,6 +158,8 @@ def describe(scene: Scene) -> Description:
         elif world is not None and e in world.members:
             kind = "body"
             bodies = tuple(i for i, n in enumerate(desc.body_names) if n == e.name)
+        elif world is not None and world.proxy_body(e) >= 0:
+            bodies = (world.proxy_body(e),)  # its solid selects it (D-090)
         desc.entities.append(
             EntityInfo(e.name, kind, tuple(e.state_names), bodies, e.position() is not None)
         )
@@ -165,5 +167,21 @@ def describe(scene: Scene) -> Description:
 
 
 def draws_payload(draws: list[Any]) -> list[tuple]:
-    """Draw records as plain tuples for sending."""
-    return [(d.kind, d.points, d.color, d.size, d.text) for d in draws]
+    """Draw records as plain tuples for sending: (kind, points, color, size, text, data)."""
+    return [(d.kind, d.points, d.color, d.size, d.text, d.data) for d in draws]
+
+
+def same_draws(a: list[tuple] | None, b: list[tuple]) -> bool:
+    """Whether two payloads draw the same thing. Arrays (clouds, ellipsoid axes) compare by
+    identity first, so an unchanged scan isn't compared point by point."""
+    if a is None or len(a) != len(b):
+        return False
+    for x, y in zip(a, b, strict=True):
+        if x[:5] != y[:5]:
+            return False
+        dx, dy = x[5], y[5]
+        if dx is dy:
+            continue
+        if dx is None or dy is None or dx.shape != dy.shape or not np.array_equal(dx, dy):
+            return False
+    return True

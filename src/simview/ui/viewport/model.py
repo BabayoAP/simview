@@ -186,7 +186,7 @@ class DrawGeometry:
 def draw_geometry(draws: list[tuple], theme: ThemeName) -> DrawGeometry:
     """Group draw records (kind, points, color, size, text) into drawable pieces."""
     out = DrawGeometry()
-    for kind, pts, color, size, text in draws:
+    for kind, pts, color, size, text, *_ in draws:
         p = [np.array(v) for v in pts]
         if kind == "line":
             out.lines.append((p[0], p[1], resolve_color(color, theme), size))
