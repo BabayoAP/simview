@@ -13,8 +13,9 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M5: Timeline + plots | ✅ Approved 2026-11-19 | `main` | VP-05, DA-01–DA-04, DA-07, DS-09 |
 | M5b: Run investigation (PRD 1.2) | ✅ Approved 2026-11-19 | `main` | RI-01–RI-06 |
 | M6: Console + workspace | ✅ Approved 2026-11-19 | `main` | SC-01–SC-05, IO-02, IO-04 |
-| M7: Block editor | **Done, awaiting approval** | `m7-block-editor` | BD-01–BD-08, DS-10 |
-| M8–M10 | Not started | | see PRD §10 |
+| M7: Block editor | ✅ Approved 2026-11-20 (CI pending: account billing) | `main` | BD-01–BD-08, DS-10 |
+| M8: Sensors + Aero/Vehicles toolboxes | In progress | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
+| M9–M10 | Not started | | see PRD §10 |
 
 ## M1: Skeleton + design system
 
@@ -293,4 +294,5 @@ quick-add popup, and the wire-hover tooltip on a real display (all three are tes
 
 ## Next
 
-1. Owner approval of M7, then M8 (PRD §10).
+1. M8 (PRD §10), on `m8-sensors-aero-vehicles`, with a pull request into `main` opened early so CI
+   runs on it once the account's Actions billing is fixed (M7 hasn't had a CI run yet).
