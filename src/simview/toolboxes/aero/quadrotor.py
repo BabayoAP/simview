@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -88,21 +89,41 @@ class Quadrotor(Entity):
 
     def inputs(self, u: np.ndarray) -> tuple[float, np.ndarray]:
         """The clipped (thrust, torque) the model applies for input `u`."""
-        thrust = float(np.clip(u[0], 0.0, self.max_thrust)) if len(u) else 0.0
+        thrust = min(max(float(u[0]), 0.0), self.max_thrust) if len(u) else 0.0
+        m = self.max_torque
         tau = np.zeros(3)
         if len(u) >= 4:
-            tau = np.clip(np.asarray(u[1:4], dtype=np.float64), -self.max_torque, self.max_torque)
+            tau = np.array([min(max(float(v), -m), m) for v in u[1:4]])
         return thrust, tau
 
     def derivative(self, t: float, x: np.ndarray, u: np.ndarray) -> np.ndarray:
-        thrust, tau = self.inputs(u)
-        v, q, w = x[3:6], x[6:10], x[10:13]
-        rot = quat_matrix(q / np.linalg.norm(q))
-        drag = self.drag * (v - self.air()) / self.mass
-        accel = rot[:, 2] * thrust / self.mass - G * E3 - drag
-        j = self.inertia
-        w_dot = (tau - np.cross(w, j * w)) / j
-        return np.concatenate([v, accel, quat_rate(q, w), w_dot])
+        # Scalar math on purpose: this runs four times per tick (RK4) per drone, and NumPy's
+        # cross / norm / clip cost more than the arithmetic on 3-vectors (NF-03).
+        thrust, (tx, ty, tz) = self.inputs(u)
+        vx, vy, vz, qw, qx, qy, qz, wx, wy, wz = x[3:13].tolist()
+        n = math.sqrt(qw * qw + qx * qx + qy * qy + qz * qz)
+        qw, qx, qy, qz = qw / n, qx / n, qy / n, qz / n
+        a = thrust / self.mass
+        k = self.drag / self.mass
+        ax_, ay_, az_ = self.air().tolist() if self.wind is not None else (0.0, 0.0, 0.0)
+        jx, jy, jz = self.inertia.tolist()
+        return np.array(
+            [
+                vx,
+                vy,
+                vz,
+                2 * (qx * qz + qw * qy) * a - k * (vx - ax_),
+                2 * (qy * qz - qw * qx) * a - k * (vy - ay_),
+                (1 - 2 * (qx * qx + qy * qy)) * a - G - k * (vz - az_),
+                0.5 * (-qx * wx - qy * wy - qz * wz),
+                0.5 * (qw * wx + qy * wz - qz * wy),
+                0.5 * (qw * wy - qx * wz + qz * wx),
+                0.5 * (qw * wz + qx * wy - qy * wx),
+                (tx - (wy * jz * wz - wz * jy * wy)) / jx,
+                (ty - (wz * jx * wx - wx * jz * wz)) / jy,
+                (tz - (wx * jy * wy - wy * jx * wx)) / jz,
+            ]
+        )
 
     def advance(self, t: float, dt: float) -> None:
         super().advance(t, dt)

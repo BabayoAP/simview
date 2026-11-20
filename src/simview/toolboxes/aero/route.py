@@ -37,13 +37,12 @@ class Route:
 
     def distance(self, points: np.ndarray) -> np.ndarray:
         """Distance from each point (N, 3) to the route's polyline: the route deviation."""
-        p = np.atleast_2d(np.asarray(points, dtype=np.float64))
-        best = np.full(len(p), np.inf)
-        for a, b in zip(self.waypoints[:-1], self.waypoints[1:], strict=True):
-            ab = b - a
-            s = np.clip(((p - a) @ ab) / max(float(ab @ ab), 1e-12), 0.0, 1.0)
-            best = np.minimum(best, np.linalg.norm(p - (a + s[:, None] * ab), axis=1))
-        return best
+        p = np.atleast_2d(np.asarray(points, dtype=np.float64))[:, None, :]  # (N, 1, 3)
+        a = self.waypoints[:-1]
+        ab = self.waypoints[1:] - a  # (S, 3)
+        s = np.clip(np.einsum("nsk,sk->ns", p - a, ab) / np.maximum((ab * ab).sum(1), 1e-12), 0, 1)
+        d = p - (a + s[..., None] * ab)
+        return np.sqrt(np.einsum("nsk,nsk->ns", d, d).min(axis=1))
 
 
 class RouteFollower:

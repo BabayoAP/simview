@@ -173,3 +173,20 @@ def test_template_card_loads_its_scene(qapp, settings):
         w.close_scene()
         w.close()
         app.start.close()
+
+
+def test_drone_delivery_card_opens_its_scene(qapp, settings):
+    """UC-2 (PRD 1.3): the Drone Delivery card loads its template scene in the app."""
+    from simview.ui.app import Controller
+
+    app = Controller(settings)
+    app.open_template("drone_delivery")
+    w = app.window
+    try:
+        pump(qapp, lambda: loaded(w))
+        assert set(w.scene_tree.items) >= {"wind", "d0", "d1", "d2"}
+        assert w.scene_path.name == "scene.py"
+    finally:
+        w.close_scene()
+        w.close()
+        app.start.close()

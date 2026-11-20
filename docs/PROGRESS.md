@@ -330,8 +330,24 @@ quick-add popup, and the wire-hover tooltip on a real display (all three are tes
   UKF equals the EKF on a linear model, both converge on range-only fixes, and the GPS + IMU
   filter flying a gusty route by its own estimate stays 3-sigma consistent (EKF and UKF).
   443 tests pass, lint clean.
-- To do: the UC-2 Drone Delivery template (with its blocks and Monte Carlo), then requirement
-  mapping and the M8 sign-off.
+- Part 6: UC-2 Drone Delivery template (`src/simview/templates/drone_delivery/`), opened by its
+  start-screen card. Three quadrotors (IMU 200 Hz, GPS 10 Hz, EKF `NavFilter`, `RouteFollower`)
+  fly depot -> drop-off (3 s hover at 3 m) -> depot at 15 m through gusty wind, steering by the
+  estimate. Params `gps_noise`, `imu_noise`, `gust`, `cruise_speed`, `cruise_alt` are the M9
+  sweep knobs. Logged: per-drone error and +-3 sigma bounds per axis, error norm, route
+  deviation, delivery time; wind speed. Draws: routes, 3-sigma ellipsoids, the wind arrow.
+  A 60 s run: all three deliver at 20.6-22.6 s and land back on their pads; RMS error
+  0.20-0.22 m (GPS noise 0.8 m), inside 3 sigma 99.7-100% of the time, route deviation under
+  0.45 m in gusts up to 7.9 m/s. 7 tests (`tests/templates/test_drone_delivery.py`, the card
+  in `tests/ui/test_scene_session.py`). Checked by eye in the dark theme.
+- Performance: the quadrotor dynamics and route distance were rewritten for speed and the
+  template logs controller-rate values, taking UC-2 from 1.9x to 6.5x real time headless at
+  dt = 1 ms. NF-03 asks for 10x: the rest is the Python RK4 loop and the per-tick logger, left
+  for the M10 performance pass.
+- 450 tests pass (Mac, Python 3.12, offline: 20 skipped), 16 GL tests pass, lint clean.
+- Not in M8 (per the PRD milestone table): the 50-trial Monte Carlo and its histogram (SE-08,
+  DA-06: M9) and the UC-2 hero demo with a block-diagram version of the loop (M10).
+- To do: requirement mapping and the M8 sign-off.
 
 ## Next
 
