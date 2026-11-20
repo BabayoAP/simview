@@ -711,3 +711,10 @@ copies the open scene into the project, takes everything along. Opening a card l
 scene; cards without a scene yet (UC-2 until the Aerospace toolbox lands, UC-3, UC-4) still
 open an empty window. The UC-1 planner keeps its lane with pure pursuit and its distance with
 a gap taken from lidar returns inside the lane (6 m standoff + 1.5 s headway, 12 m/s cruise).
+
+**D-099 — UC-2 is a drone delivery fleet (PRD 1.3).** The owner replaced the drone
+interception use case with a delivery fleet on 2026-11-20 and kept it as the hero demo. The
+Aerospace toolbox (TB-AERO) keeps the 6-DOF quadrotor, EKF and UKF, and flight metrics; it adds
+attitude/position flight control, route following, and a wind and gust model, and drops the
+interceptor and guidance laws. The template id is `drone_delivery`. The seeker sensor (SN-01)
+stays as a general range/bearing sensor.

@@ -321,8 +321,8 @@ quick-add popup, and the wire-hover tooltip on a real display (all three are tes
 - 425 tests pass (Mac, Python 3.12, offline: 20 skipped), plus all 16 GL tests with
   `QT_QPA_PLATFORM=cocoa SIMVIEW_GL=1` (they do run from a Claude terminal with cocoa); lint
   clean.
-- To do: the Aerospace toolbox (quadrotor, PN, EKF: TB-AERO), the UC-2 Drone Interception
-  template, then requirement mapping and the M8 sign-off.
+- To do: the Aerospace toolbox (TB-AERO: quadrotor, flight control, wind, EKF/UKF, metrics), the
+  UC-2 Drone Delivery template (PRD 1.3, D-099), then requirement mapping and the M8 sign-off.
 
 ## Next
 

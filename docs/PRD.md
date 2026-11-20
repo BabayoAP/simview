@@ -1,6 +1,6 @@
 # SimView — Product Requirements Document
 
-**Version:** 1.2 · **Status:** Ready to build · **Owner:** Harrison
+**Version:** 1.3 · **Status:** Ready to build · **Owner:** Harrison
 
 **Changes in 1.1 (2026-11-18, approved by the owner):** added §5.10 Robotics depth (RB) and milestone
 **M3b: Robotics depth** before M4, which also finishes TB-ROBOT. Updated §8.3, §8.4, §9, §10, and §12.
@@ -11,6 +11,11 @@ meant **Alloy Robotics (usealloy.ai)**, an AI platform for investigating robot d
 requirements as plain robotics depth, with no Alloy framing; 1.1's `[Future]` physics-engine list
 (RB-20–RB-28) is removed. New §5.11 Run investigation (RI) brings usealloy.ai's functionality to
 SimView's own run logs, with milestone **M5b: Run investigation** after M5 (see DECISIONS D-037).
+
+**Changes in 1.3 (2026-11-20, approved by the owner):** UC-2 is now **Drone delivery fleet** instead of
+drone interception, and it stays the hero demo. The Aerospace toolbox keeps the quadrotor, EKF and UKF,
+and adds flight control, route following, and a wind model in place of the interceptor and guidance
+laws. Updated G1, UC-2, NF-03, §8 (template folder), §9, §10 (hero demo, M8). See DECISIONS D-099.
 
 ---
 
@@ -59,7 +64,7 @@ SimView is a desktop application for **building, running, and visualizing simula
 ## 2. Goals and non-goals
 
 ### Goals
-- **G1.** Simulate rigid-body and point-mass systems (robot arms, ground vehicles, multirotors, missiles/interceptors) with a real-time 3D viewport.
+- **G1.** Simulate rigid-body and point-mass systems (robot arms, ground vehicles, multirotors) with a real-time 3D viewport.
 - **G2.** Offer a MATLAB-like interactive environment: editor, console, workspace browser, and plots.
 - **G3.** Offer a Simulink-like block-diagram editor that compiles to the same simulation engine.
 - **G4.** Make simulations deterministic and reproducible: same seed plus same model gives bit-identical logs.
@@ -103,17 +108,17 @@ SimView is a desktop application for **building, running, and visualizing simula
 
 **Features used:** VP-01–VP-08, SE-01–SE-06, SN-01–SN-03, DA-01–DA-04, PL-01.
 
-### UC-2: Drone tracking and interception
-**Story:** As Dev, I want to simulate an interceptor drone tracking and intercepting a maneuvering target drone using noisy sensor data, so I can tune guidance and filter parameters.
+### UC-2: Drone delivery fleet
+**Story:** As Dev, I want to simulate a small fleet of delivery quadrotors flying their routes through gusty wind while each one estimates its own state from noisy GPS and IMU data, so I can tune the flight controller and the navigation filter.
 
 **Workflow:**
-1. Load template `Drone Interception`. It contains a target quadrotor flying an evasive waypoint path and an interceptor quadrotor.
-2. The interceptor's seeker gives noisy range, bearing, and elevation at 20 Hz.
-3. An Extended Kalman Filter (EKF) block estimates target position and velocity.
-4. A Proportional Navigation guidance block commands acceleration: $a_c = N \, V_c \, \dot{\lambda}$.
-5. Run. The viewport shows both trajectories, the estimate's covariance ellipsoid, and the line of sight.
-6. Plots show miss distance, estimation error versus $\pm 3\sigma$ bounds, and commanded versus achieved acceleration.
-7. Parameter sweep: run 50 Monte Carlo trials over $N \in \{3,4,5\}$ and sensor noise levels, then view a miss-distance histogram.
+1. Load template `Drone Delivery`. It contains a depot, three delivery quadrotors, and their drop-off points.
+2. Each drone carries an IMU (200 Hz) and a GPS (10 Hz), both noisy.
+3. An Extended Kalman Filter (EKF) block per drone fuses the IMU and GPS into a position and velocity estimate.
+4. A route-following flight controller flies each drone depot → drop-off → depot, using the estimate rather than the true state.
+5. Run. The viewport shows the trails, the planned routes, the wind, and each estimate's covariance ellipsoid.
+6. Plots show estimation error versus $\pm 3\sigma$ bounds, route deviation, wind speed, and each drone's delivery time.
+7. Parameter sweep: run 50 Monte Carlo trials over gust strength and GPS noise, then view a delivery-time histogram.
 
 **Features used:** VP-01–VP-09, SE-01–SE-08, BD-01–BD-08, DA-01–DA-06, TB-AERO.
 
@@ -329,7 +334,7 @@ log of real robot data. Investigation works headless and from the UI.
 |---|---|---|
 | NF-01 | Viewport frame rate with a 20-entity scene and 50k-point cloud on a mid-range GPU (GTX 1660 / M1 integrated) | ≥ 60 FPS |
 | NF-02 | Real-time factor (RTF) headless, for the 6-DOF arm (UC-3) at dt = 1 ms | ≥ 20× |
-| NF-03 | RTF headless, for drone interception (UC-2) at dt = 1 ms | ≥ 10× |
+| NF-03 | RTF headless, for the drone delivery fleet (UC-2) at dt = 1 ms | ≥ 10× |
 | NF-04 | Sim → UI state-transfer latency | ≤ 20 ms |
 | NF-05 | Cold start to usable window | ≤ 4 s |
 | NF-06 | Determinism (SE-07) | Byte-identical logs across 10 repeated runs on the same machine |
@@ -635,7 +640,7 @@ simview/
     ui/          app.py main_window.py viewport/ plots/ blockeditor/ console/ inspector/ timeline/
     toolboxes/   robotics/ controls/ aero/ rl/   (built-ins, registered via entry points)
                  robotics/: kinematics.py se3.py dynamics.py trajectory.py controllers.py frames.py library.py
-    templates/   av_scenario/ drone_intercept/ ur5_ik/ drone_landing/
+    templates/   av_scenario/ drone_delivery/ ur5_ik/ drone_landing/
   tests/         mirrors src/simview/
   examples/      one script per flagship use case
 ```
@@ -648,7 +653,7 @@ simview/
 |---|---|---|
 | **Robotics** | URDF loading helpers, FK, geometric Jacobian, damped-least-squares IK, trajectory generation (cubic/quintic, trapezoidal velocity), inverse dynamics through MuJoCo, transform tree utilities, and SE(3) helpers (`sv.robotics.se3`). Since 1.1 also the §5.10 robotics depth: joint servos and targets, joint PID / impedance, differential-IK and operational-space control, and the Menagerie robot library. | MVP |
 | **Controls** | PID with anti-windup, transfer function / state-space blocks, `step_info`, `bode`, LQR (`scipy.linalg.solve_continuous_are`), and discretization (`c2d`). | MVP |
-| **Aerospace / Guidance** | 6-DOF quadrotor model, point-mass interceptor, Proportional Navigation and Augmented PN, seeker model, EKF and UKF blocks, and engagement metrics (miss distance, time-to-go). | MVP |
+| **Aerospace** | 6-DOF quadrotor model, attitude and position flight controllers, route (waypoint) following, a wind and gust model, EKF and UKF blocks with a GPS + IMU navigation filter, and flight metrics (delivery time, route deviation, estimation error and NEES). | MVP |
 | **Vehicles** | Kinematic bicycle model, pure pursuit, Stanley controller, road/lane scene primitives, scripted NPC agents. | MVP |
 | **RL** | `make_env`, VecEnv, metric logging, episode replay, and the drone-landing and arm-reach example envs. | MVP |
 | **Signal Processing** | FFT, PSD (Welch), FIR/IIR filter design blocks, spectrogram plot. | v1 |
@@ -660,15 +665,15 @@ simview/
 
 **MVP cut:** every requirement tagged `[MVP]` above.
 
-**Hero demo (the portfolio centerpiece): UC-2, Drone Interception.** A single screen shows:
-- the 3D engagement with trails, line of sight, and the EKF covariance ellipsoid,
-- the block diagram of the guidance loop (Seeker → EKF → PN → Quadrotor),
-- live plots of miss distance and estimation error against $\pm3\sigma$,
-- a 50-trial Monte Carlo histogram.
+**Hero demo (the portfolio centerpiece): UC-2, Drone Delivery.** A single screen shows:
+- the 3D fleet flying its routes with trails, the wind, and each EKF's covariance ellipsoid,
+- the block diagram of one drone's loop (GPS + IMU → EKF → Route follower → Quadrotor),
+- live plots of estimation error against $\pm3\sigma$ and route deviation,
+- a 50-trial Monte Carlo delivery-time histogram.
 
 It also needs a 60–90 s screen recording for the README.
 
-This demo is the strongest portfolio choice because it exercises every major subsystem (physics, sensors, estimation, guidance, block editor, plotting, Monte Carlo) in one visual.
+This demo is the strongest portfolio choice because it exercises every major subsystem (physics, sensors, estimation, control, block editor, plotting, Monte Carlo) in one visual.
 
 ### Milestones
 
@@ -685,7 +690,7 @@ Stop for review after each one.
 | 6–7 | **M5b: Run investigation** | Run catalog, scenarios with scanning of past and new runs, traceable findings that jump the timeline, HTML run reports, run comparison, CSV/Parquet log import. | RI-01–RI-06 | A scenario defined once finds every injected event across 20 runs with no misses and no false matches. A report for the UC-3 pick run exports with its plots. Clicking a finding moves the timeline to it within 100 ms. An imported CSV log replays in the viewport. |
 | 7 | **M6: Console + workspace** | IPython console, editor, workspace browser, live parameter tweaking, CSV/.mat import, project save/load. | SC-01–SC-05, IO-02, IO-04 | `sim.params` changes take effect on the next tick. A project round-trips save→load. |
 | 8–9 | **M7: Block editor** | Canvas, core block library, Python Function block, entity blocks, compiler with algebraic-loop detection, subsystems, Scope docking, JSON save. | BD-01–BD-08, DS-10 | A PID block diagram controlling a quadrotor's altitude matches the same controller written as a script within 1e-9. |
-| 10 | **M8: Sensors + Aero/Vehicles toolboxes** | IMU, GPS, seeker, camera, lidar. Quadrotor, PN, EKF, bicycle model, pure pursuit. Point clouds and covariance ellipsoids. | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH | The UC-1 and UC-2 templates run end to end. |
+| 10 | **M8: Sensors + Aero/Vehicles toolboxes** | IMU, GPS, seeker, camera, lidar. Quadrotor, flight control, wind, EKF and UKF, bicycle model, pure pursuit. Point clouds and covariance ellipsoids. | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH | The UC-1 and UC-2 templates run end to end. |
 | 11 | **M9: Monte Carlo + RL** | Sweep runner, results view, analysis functions, `make_env`, VecEnv, training panel, click-to-replay. | SE-08, SE-09, DA-05, DA-06, ML-01–ML-04 | 50-trial Monte Carlo finishes. `env_checker` passes. PPO trains drone landing to >80% success, with replay working. |
 | 12 | **M10: Polish + hero demo** | Performance pass against NF-01–NF-07, the 4 templates, README with GIFs, a hero demo recording, and `docs/ARCHITECTURE.md`. | NF-01–NF-09, TB-01, TB-02, DS-11 | All MVP requirement IDs pass, all NF targets are met or the gaps are documented, a design QA pass is done (screenshots of every panel in both themes checked against §7), and the demo video is recorded. |
 
