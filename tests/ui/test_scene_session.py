@@ -156,3 +156,20 @@ def test_controls_without_a_scene_explain_themselves(qapp, window):
     for action in (window.run, window.pause, window.step, window.stop):
         action()
     assert "No scene loaded" in window.statusBar().currentMessage()
+
+
+def test_template_card_loads_its_scene(qapp, settings):
+    """D-098: opening the Autonomous Vehicle card loads the template's scene (UC-1 step 1-2)."""
+    from simview.ui.app import Controller
+
+    app = Controller(settings)
+    app.open_template("av_scenario")
+    w = app.window
+    try:
+        pump(qapp, lambda: loaded(w))
+        assert set(w.scene_tree.items) >= {"ego", "npc0", "npc1", "npc2"}
+        assert w.scene_path.name == "scene.py"
+    finally:
+        w.close_scene()
+        w.close()
+        app.start.close()

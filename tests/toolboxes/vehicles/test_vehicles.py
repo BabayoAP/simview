@@ -110,7 +110,7 @@ def test_road_and_path_draw():
     road.draw(draw)
     kinds = {d.kind for d in draw.persistent}
     assert kinds == {"line"} and len(draw.persistent) == 3 + 3 + 2  # 2 edges + 2 dashes
-    road.lane(0).draw(draw, color="success")
+    road.lane(0).draw(draw, color="state.success")
     assert len(draw.transient) == 3
 
 

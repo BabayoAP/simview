@@ -701,3 +701,13 @@ blocks later; `speed_control` is a clipped P-controller on speed.
 (t, v) schedule (linear between points) or a function of t; it has no dynamics and doesn't
 react to other agents (the PRD's "scripted"). Arc length advances by the trapezoid rule, exact
 for piecewise-linear schedules. At the path's end it stops, or starts over with `loop=True`.
+
+## M8: Templates
+
+**D-098 — A template is a scene file that a start-screen card opens.** Each template lives in
+`src/simview/templates/<id>/scene.py` (PRD §8) and is self-contained: UC-1's planner is a
+controller inside the scene file rather than a separate `planner.py`, so Save Project, which
+copies the open scene into the project, takes everything along. Opening a card loads that
+scene; cards without a scene yet (UC-2 until the Aerospace toolbox lands, UC-3, UC-4) still
+open an empty window. The UC-1 planner keeps its lane with pure pursuit and its distance with
+a gap taken from lidar returns inside the lane (6 m standoff + 1.5 s headway, 12 m/s cruise).
