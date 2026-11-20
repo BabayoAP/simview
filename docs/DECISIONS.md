@@ -649,3 +649,28 @@ the scene replaces those plots (plots the user added are kept).
 the account's Actions minutes. CI now triggers on `workflow_dispatch` and on pull requests to
 `main` (docs-only changes skipped). Branch work is verified locally; the 3-OS run happens once
 per milestone, before the owner merges.
+
+## M8: Vehicles toolbox
+
+**D-091 — Paths and roads (TB-VEH).** A path is a 2-D polyline (`sv.vehicles.Path`) with arc
+length, `point_at` / `heading_at` (clamped to the ends) and `nearest`, whose `cross_track` is
+positive left of the path. Road and lane primitives are data, not MuJoCo geometry: a `Road` is
+a centerline with N lanes of equal width, lane 0 the rightmost (drive on the right); lanes and
+edges are mitred offsets of the centerline. `road.draw(ctx.draw)` draws edges and dashed
+dividers as persistent debug lines (call it once, at t = 0). Lidar doesn't see the road
+surface; NPCs get solids with `scene.attach_shape` (D-090) when sensors should see them.
+
+**D-092 — Kinematic bicycle.** Reference point is the rear axle; states x, y, yaw, v; input
+`u = [accel, steer]`, clipped to `max_accel` / `max_steer` (35° default), speed held within
+[`min_speed`, `max_speed`] (0 to 40 m/s, so no reversing by default). Wheelbase 2.7 m default.
+
+**D-093 — Path trackers.** Pure pursuit uses lookahead `gain * v + min_lookahead` (0.5 s,
+3 m) with the goal searched forward from the nearest point; Stanley uses the front-axle
+cross-track error with a softening speed (1 m/s). Both are plain callables
+`ctrl(x, y, yaw, v) -> steer`, so they work in script controllers and are easy to wrap as
+blocks later; `speed_control` is a clipped P-controller on speed.
+
+**D-094 — Scripted NPCs.** `ScriptedNPC` follows a path at a speed given as a constant, a
+(t, v) schedule (linear between points) or a function of t; it has no dynamics and doesn't
+react to other agents (the PRD's "scripted"). Arc length advances by the trapezoid rule, exact
+for piecewise-linear schedules. At the path's end it stops, or starts over with `loop=True`.
