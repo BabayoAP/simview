@@ -222,6 +222,39 @@ def test_targets_get_a_gizmo_and_report_moves(qapp):
     vp.close()
 
 
+def test_target_gizmo_drags_with_real_mouse_events(qapp, recwarn):
+    """VP-10: hover, press, move, release on a gizmo arrow through VTK's event path moves the
+    target. PyVista's callbacks need the style's `_parent`; without it every move raised."""
+    from simview.ui.viewport.view import Viewport
+
+    vp = Viewport("dark")
+    vp.resize(800, 600)
+    vp.show()
+    qapp.processEvents()
+    scene = load_scene(ROOT / "examples" / "ur5_ik_drag.py")
+    vp.load(describe(scene))
+    vp.update_frame(frame_of(Sim(scene)))
+    vp.render()
+    qapp.processEvents()
+    moved = []
+    vp.target_moved.connect(lambda n, m: moved.append((n, m)))
+    widget = vp.target_widgets[0]
+    start = np.array(vp.target_actors["goal"].user_matrix)
+    arrow = widget._arrows[0]  # the x arrow
+    tip = np.array(arrow.GetCenter())
+    x, y = display_xy(vp, tip)
+    mouse(vp, "MouseMoveEvent", x, y)  # hover highlights the handle
+    assert widget._selected_actor is arrow
+    mouse(vp, "LeftButtonPressEvent", x, y)
+    mouse(vp, "MouseMoveEvent", x + 60, y)
+    mouse(vp, "LeftButtonReleaseEvent", x + 60, y)
+    assert moved and moved[-1][0] == "goal"
+    assert not np.allclose(moved[-1][1], start)
+    assert not [w for w in recwarn if "Encountered issue in callback" in str(w.message)]
+    vp.close_viewport()
+    vp.close()
+
+
 def test_gizmo_release_restores_simview_navigation(scene_view):
     """PyVista's gizmo enables its trackball style on release; SimView's must come back."""
     vp, _ = scene_view
