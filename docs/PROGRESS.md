@@ -321,8 +321,17 @@ quick-add popup, and the wire-hover tooltip on a real display (all three are tes
 - 425 tests pass (Mac, Python 3.12, offline: 20 skipped), plus all 16 GL tests with
   `QT_QPA_PLATFORM=cocoa SIMVIEW_GL=1` (they do run from a Claude terminal with cocoa); lint
   clean.
-- To do: the Aerospace toolbox (TB-AERO: quadrotor, flight control, wind, EKF/UKF, metrics), the
-  UC-2 Drone Delivery template (PRD 1.3, D-099), then requirement mapping and the M8 sign-off.
+- Rescope (`7bddf22`, PRD 1.3, D-099): UC-2 is now a drone delivery fleet, still the hero demo.
+- Part 5: Aerospace toolbox `sv.aero` (TB-AERO): `Quadrotor`, `AttitudeController`,
+  `PositionController`, `Wind`, `Route` and `RouteFollower`, `EKF`, `UKF`, `NavFilter`, `nees`
+  (D-100..D-105); 18 tests in `tests/toolboxes/aero/`: free fall and hover, spin-up, clipping,
+  drag in wind, commanded acceleration and tilt limit, position step, gust statistics and
+  correlation, seeded repeatability, route order / dwell / deviation, EKF equals the linear KF,
+  UKF equals the EKF on a linear model, both converge on range-only fixes, and the GPS + IMU
+  filter flying a gusty route by its own estimate stays 3-sigma consistent (EKF and UKF).
+  443 tests pass, lint clean.
+- To do: the UC-2 Drone Delivery template (with its blocks and Monte Carlo), then requirement
+  mapping and the M8 sign-off.
 
 ## Next
 

@@ -50,6 +50,8 @@ ignore = ["ANN401"]
 [tool.ruff.lint.per-file-ignores]
 # T, R, J: the standard math names for transforms, rotations, and Jacobians.
 "src/simview/toolboxes/robotics/**" = ["N803", "N806"]
+# P, Q, R, F, H, K, S: the standard Kalman filter names.
+"src/simview/toolboxes/aero/filters.py" = ["N802", "N803", "N806"]
 "tests/**" = ["ANN", "N802", "N806"]
 
 [tool.pytest.ini_options]

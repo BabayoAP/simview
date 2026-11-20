@@ -718,3 +718,45 @@ Aerospace toolbox (TB-AERO) keeps the 6-DOF quadrotor, EKF and UKF, and flight m
 attitude/position flight control, route following, and a wind and gust model, and drops the
 interceptor and guidance laws. The template id is `drone_delivery`. The seeker sensor (SN-01)
 stays as a general range/bearing sensor.
+
+## M8: Aerospace toolbox (TB-AERO, PRD 1.3)
+
+**D-100 — Quadrotor model.** A rigid body with collective thrust along body z and body
+torques: `u = [thrust, tau_x, tau_y, tau_z]`, clipped to [0, `max_thrust`] (2.5 m g by default)
+and +-`max_torque`. States are position, world velocity, quaternion (w, x, y, z, body to world,
+renormalized each tick), and body rate, so `position()`, `velocity()`, `rotation()` and sensors
+work unchanged. Rotor speeds and motor lag aren't modelled. Drag is linear in the air-relative
+velocity, `drag * (v - wind)`, which is how a `Wind` entity acts on it.
+
+**D-101 — Attitude controller.** An acceleration command becomes the thrust vector
+m (a + g); its direction is the desired body z (tilt limited, 35° default, and never below
+10% of hover lift), and yaw is set by keeping body y perpendicular to the yaw heading (the
+geometric SO(3) construction). A PD law on the SO(3) error with per-axis gains J wn^2 and
+2 zeta wn J (wn 25 rad/s, zeta 0.9) gives the torques. `PositionController` is a PD on
+position and velocity errors plus a feed-forward acceleration, limited to `max_accel`.
+
+**D-102 — Wind.** A `Wind` entity is uniform in space: mean plus a first-order Gauss-Markov
+gust per axis, stepped with the exact discrete update so the gust variance doesn't depend on
+dt. Its velocity is logged as `wind.wx/wy/wz`. Its noise comes from its own generator seeded
+from the scene seed and its name, like sensors (D-091).
+
+**D-103 — Route follower.** A carrot moves along the current leg at the route speed, ramping
+up and down at `accel` (2 m/s^2), so it stops at each waypoint, and slowing to a stop as the
+drone falls `max_lag` behind; its acceleration is fed forward, so the drone doesn't overshoot
+the corners. A waypoint counts as reached inside `arrive_radius`; arrival times are recorded
+(delivery time is read from them), and `dwell` hovers there (a drop-off). It steers by whatever
+state it is given, true or estimated.
+
+**D-104 — EKF and UKF.** One interface: `predict(dt, u)` then `update(z)`, with models as
+plain functions and `Q`/`R` as matrices or functions of dt. The EKF takes Jacobians or uses
+central differences, and updates P in Joseph form. The UKF uses scaled sigma points (alpha
+0.5, beta 2, kappa 0). Both keep the last innovation and its NIS. A `residual` function lets
+angle measurements wrap.
+
+**D-105 — Navigation filter.** `NavFilter` estimates position and velocity (6 states) from an
+IMU and GPS, loosely coupled: the IMU's specific force, rotated to the world by the drone's
+attitude, plus gravity, is the prediction input, and each GPS fix is a position update. The
+attitude is taken as known (an attitude reference), so the models are linear and the EKF and
+UKF agree; IMU biases aren't estimated. Process noise is the discrete white-noise acceleration
+model with the accelerometer noise. In the loop (25 s of gusty flight) the position error stays
+inside 3 sigma over 97% of the time and the mean NEES is consistent with 3 degrees of freedom.
