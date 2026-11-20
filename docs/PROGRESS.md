@@ -305,10 +305,24 @@ quick-add popup, and the wire-hover tooltip on a real display (all three are tes
   loaded by its start-screen card (D-098). A 30 s run: about 27x real time headless, lane kept
   within 8 cm through the bend, 8.7 m closest gap behind the braking NPC, settles at 18 m /
   8 m/s; 5 tests (`tests/templates/`, `tests/ui/test_scene_session.py`).
-- 403 tests pass locally (Mac, Python 3.12, offline: 4 skipped; GL tests not run), lint clean.
-- To do: sensor tests (SN-01..SN-03, VP-08, VP-09), the Aerospace toolbox (quadrotor, PN,
-  EKF: TB-AERO), the UC-2 Drone Interception template, the GL check of point clouds and
-  ellipsoids, then requirement mapping and the M8 sign-off.
+- Part 4: sensor tests and the viewport side of VP-08 / VP-09. `tests/sensors/` (22 tests):
+  IMU at rest and under acceleration + yaw rate, bias/noise statistics, sample-and-hold and
+  `updated()`, seeded per-sensor noise (D-091), GPS mount offset and noise, seeker geometry
+  and `rbe` round trip, lidar ranges to a wall and the ground (own solid excluded), max range,
+  noise, camera color/depth/sky/intrinsics/determinism, logged `<entity>.<sensor>.<field>`
+  channels, cloud and ellipsoid draw data. The viewport didn't draw `cloud` or `ellipsoid`
+  draws at all: it now does (one points actor per cloud; translucent shells batched by color,
+  `tokens.ELLIPSOID_OPACITY` 0.25). GL tests: a cloud keeps its points and an ellipsoid's
+  shell spans its semi-axes; a 200k-point cloud replaced and drawn each frame has a median
+  frame time under 33 ms (VP-08) on the Mac. Checked by eye: a 32-beam scan and a 2-sigma
+  ellipsoid in the dark theme.
+- Gizmo fix (`fix/gizmo-drag`, PR #1, cherry-picked here): dragging targets didn't work
+  because SimView's interactor style lacked PyVista's `_parent` link.
+- 425 tests pass (Mac, Python 3.12, offline: 20 skipped), plus all 16 GL tests with
+  `QT_QPA_PLATFORM=cocoa SIMVIEW_GL=1` (they do run from a Claude terminal with cocoa); lint
+  clean.
+- To do: the Aerospace toolbox (quadrotor, PN, EKF: TB-AERO), the UC-2 Drone Interception
+  template, then requirement mapping and the M8 sign-off.
 
 ## Next
 
@@ -318,4 +332,5 @@ quick-add popup, and the wire-hover tooltip on a real display (all three are tes
    `test_scrubbing_redraws_the_real_viewport_within_100_ms`, the only GL test that opens the
    whole main window; reproducible on re-run. It passed on M6 with the same dependency
    versions, so suspect M7's main-window changes. Not bisected yet (can't be run from a
-   Claude terminal: try it locally, or bisect on a debug branch).
+   Claude terminal: try it locally, or bisect on a debug branch). Update: all GL tests,
+   including this one, pass locally on the Mac with `QT_QPA_PLATFORM=cocoa SIMVIEW_GL=1`.

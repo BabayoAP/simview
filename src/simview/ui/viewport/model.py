@@ -181,12 +181,17 @@ class DrawGeometry:
     arrows: list[tuple[np.ndarray, np.ndarray, str]] = field(default_factory=list)
     points: list[tuple[np.ndarray, str, float]] = field(default_factory=list)
     labels: list[tuple[np.ndarray, str, str, float]] = field(default_factory=list)
+    # (N, 3) points, color, point size (VP-08)
+    clouds: list[tuple[np.ndarray, str, float]] = field(default_factory=list)
+    # center, 3x3 semi-axes as columns, color (VP-09)
+    ellipsoids: list[tuple[np.ndarray, np.ndarray, str]] = field(default_factory=list)
 
 
 def draw_geometry(draws: list[tuple], theme: ThemeName) -> DrawGeometry:
-    """Group draw records (kind, points, color, size, text) into drawable pieces."""
+    """Group draw records (kind, points, color, size, text, data) into drawable pieces."""
     out = DrawGeometry()
-    for kind, pts, color, size, text, *_ in draws:
+    for kind, pts, color, size, text, *rest in draws:
+        data = rest[0] if rest else None
         p = [np.array(v) for v in pts]
         if kind == "line":
             out.lines.append((p[0], p[1], resolve_color(color, theme), size))
@@ -199,4 +204,10 @@ def draw_geometry(draws: list[tuple], theme: ThemeName) -> DrawGeometry:
         elif kind == "frame":
             for axis, end in zip("xyz", p[1:], strict=True):
                 out.lines.append((p[0], end, tokens.AXIS_COLORS[axis], tokens.TRAIL_WIDTH))
+        elif kind == "cloud" and data is not None and len(data):
+            out.clouds.append((np.asarray(data), resolve_color(color, theme), size))
+        elif kind == "ellipsoid" and data is not None:
+            out.ellipsoids.append(
+                (p[0], np.asarray(data, dtype=float), resolve_color(color, theme))
+            )
     return out

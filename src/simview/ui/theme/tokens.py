@@ -140,6 +140,7 @@ ORBIT_DEG_PER_PX: Final = 0.4
 ZOOM_STEP: Final = 0.15  # fraction of the distance to the cursor point per wheel notch
 FLY_STEP: Final = 0.02  # fraction of the scene size per fly-mode key event
 DRAW_POINT_SIZE: Final = 8  # px, debug-draw default (VP-07)
+ELLIPSOID_OPACITY: Final = 0.25  # covariance ellipsoid surface (VP-09)
 
 # Timeline (§7.4) and plots (§7.6).
 TIMELINE_READOUT_WIDTH: Final = 230  # px, fits "t = 1234.567 s / 1234.567 s  replay"

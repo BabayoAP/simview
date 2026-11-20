@@ -198,6 +198,45 @@ def test_debug_draws(scene_view):
     assert vp.draw_actors == [] and vp.draw_meshes == []
 
 
+def test_point_clouds_and_ellipsoids_render(scene_view):
+    """VP-08 / VP-09: a cloud keeps all its points; an ellipsoid's shell spans its semi-axes."""
+    vp, _ = scene_view
+    cloud = np.random.default_rng(0).normal(size=(5000, 3)).astype(np.float32)
+    axes = np.diag([0.3, 0.2, 0.1])
+    vp.set_draws(
+        [
+            ("cloud", (), "accent", 2.0, "", cloud),
+            ("ellipsoid", ((0.5, 0.0, 0.5),), "state.warning", 3.0, "", axes),
+            ("cloud", (), "accent", 2.0, "", np.zeros((0, 3), np.float32)),  # empty: skipped
+        ]
+    )
+    vp.render()
+    assert len(vp.draw_actors) == 2
+    pts, shell = vp.draw_meshes
+    assert pts.n_points == 5000
+    np.testing.assert_allclose(
+        shell.bounds, (0.2, 0.8, -0.2, 0.2, 0.4, 0.6), atol=5e-3
+    )  # faceted shell
+    vp.set_draws([])
+    assert vp.draw_actors == []
+
+
+def test_200k_point_cloud_renders_at_30_fps(scene_view):
+    """VP-08: a 200k-point cloud (e.g. a dense lidar scan) replaced and drawn every frame."""
+    vp, _ = scene_view
+    rng = np.random.default_rng(1)
+    clouds = [rng.uniform(-5, 5, size=(200_000, 3)).astype(np.float32) for _ in range(3)]
+    vp.set_draws([("cloud", (), "accent", 2.0, "", clouds[0])])
+    vp.render()  # warm up
+    times = []
+    for i in range(30):
+        start = time.perf_counter()
+        vp.set_draws([("cloud", (), "accent", 2.0, "", clouds[i % 3])])
+        vp.render()
+        times.append(time.perf_counter() - start)
+    assert np.median(times) < 1 / 30, f"median frame {np.median(times) * 1e3:.1f} ms"
+
+
 def test_targets_get_a_gizmo_and_report_moves(qapp):
     """VP-10: an IK target has an always-visible gizmo; its moves are emitted."""
     from simview.ui.viewport.view import Viewport
