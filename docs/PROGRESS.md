@@ -469,6 +469,20 @@ and DS-11 checks, (3) design QA of every panel in both themes, (4) README with G
   Tests: `tests/toolboxes/test_registry.py` (fake toolboxes installed as real distributions).
   DS-11 (D-120): `tests/ui/test_shortcuts.py` checks the §7.8 table; it found that Redo had no
   Ctrl+Shift+Z on Windows (fixed). TB-01 ✅ TB-02 ✅ DS-11 ✅ (Ctrl+1–4 presets are DS-12, v1).
+- Part 3 (design QA, in progress, 2026-11-22): screenshots of the start screen, empty window,
+  palette, every template (3D view, diagram, Runs) in both themes, taken with the main-window
+  screen grab. Found and fixed: the ViewCube used VTK's default axis colors (Y yellow, Z green),
+  against §7.3's fixed X red / Y green / Z blue; it and the triad now use `AXIS_COLORS`. The
+  Inspector's "select an entity" text was a clipped label with a horizontal scrollbar once a
+  scene loaded; it is now the same empty state (icon, hint, Show Scene Tree) as before loading
+  (§7.8). The Robotic Arm (UR5) card opened an empty window: `templates/ur5_ik/scene.py` is new
+  (the UC-3 drag scene, also kept as `examples/ur5_ik_drag.py`), so all 4 flagship cards open a
+  scene (`tests/templates/test_ur5_ik.py`), and template windows keep the template's title
+  instead of "scene.py". Still to check on screen: the recolored ViewCube (the screen was locked
+  for the second capture pass, which makes grabs blank and GL tests hang), the light-theme
+  speed combo box (no visible frame), and the remaining panels (sweep view, training with data).
+  498 tests pass offline (the DA-01 timing test flaked once again, passed alone); GL tests
+  not rerun yet.
 - After part 1: 486 tests pass (offline: 20 skipped), 16 GL tests pass, lint clean. The DA-01 plot timing test
   (`test_ten_signals_of_100k_samples_redraw_at_30_fps`, median ~25 ms vs 33 ms) failed once
   under full-suite load and passed on rerun.

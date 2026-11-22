@@ -55,7 +55,7 @@ class Controller:
         window = self.open_window(f"template/{template_id}", title)
         path = scene_path(template_id)
         if path is not None:
-            window.load_scene(path)  # D-098
+            window.load_scene(path, title)  # D-098
 
     def open_project(self, path: str) -> None:
         add_recent_project(self.settings, path)

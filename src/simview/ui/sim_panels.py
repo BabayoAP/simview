@@ -6,6 +6,8 @@ signals, so the viewport, tree, inspector, signal tree, and plots always agree (
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QColor, QFont
@@ -23,6 +25,7 @@ from qtpy.QtWidgets import (
 from simview.ipc.protocol import Description
 from simview.ipc.shm import Frame
 from simview.ui import theme
+from simview.ui.panels import EmptyState
 from simview.ui.theme import tokens
 
 GROUPS = (("robot", "Robots"), ("body", "Objects"), ("entity", "Models"))
@@ -100,22 +103,38 @@ class SceneTree(QTreeWidget):
             item.setBackground(0, tint if n == name else QColor(0, 0, 0, 0))
 
 
+EMPTY_HINT = "Select an entity to see its properties."
+
+
 class Inspector(QScrollArea):
     """VP-06: the selected entity's pose, velocity, and every state, live. Robots get one
     slider per joint, which follows the simulation (UC-3)."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, on_empty: Callable[[], object] | None = None
+    ) -> None:
+        """`on_empty` is the empty state's button action (§7.8), e.g. show the scene tree."""
         super().__init__(parent)
         self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.name: str | None = None
         self.desc: Description | None = None
         self.values: dict[str, QLabel] = {}
         self.sliders: dict[str, QSlider] = {}
         self._body = QWidget()
         self.setWidget(self._body)
+        self.empty = EmptyState(
+            "sliders-horizontal",
+            EMPTY_HINT,
+            "Show Scene Tree",
+            on_empty or (lambda: None),
+        )
         self.title = QLabel("")
+        self.title.setWordWrap(True)
+        self.title.hide()
         self.form = QFormLayout()
         outer = QVBoxLayout(self._body)
+        outer.addWidget(self.empty, 1)
         outer.addWidget(self.title)
         outer.addLayout(self.form)
         outer.addStretch(1)
@@ -126,12 +145,11 @@ class Inspector(QScrollArea):
             self.form.removeRow(0)
         self.values, self.sliders = {}, {}
         info = None if desc is None else next((e for e in desc.entities if e.name == name), None)
+        self.empty.setVisible(info is None)
+        self.title.setVisible(info is not None)
         if info is None:
-            self.title.setText("Select an entity to see its properties.")
-            self.title.setProperty("role", "secondary")
             return
         self.title.setText(f"{info.name}  ·  {info.kind}")
-        self.title.setProperty("role", "")
         mono = QFont(tokens.FONT_MONO)
         mono.setPixelSize(tokens.FONT_SIZE["secondary"])
         if info.has_marker:

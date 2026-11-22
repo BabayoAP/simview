@@ -185,8 +185,13 @@ class Viewport(QWidget):
             name="world_axes",
         )
         self.world_axes.SetVisibility(self.options["grid"])
-        p.add_axes(line_width=2)  # triad, bottom left (DS-04)
+        axis = {a: tokens.AXIS_COLORS[a] for a in "xyz"}  # §7.3: X red, Y green, Z blue
+        p.add_axes(line_width=2, x_color=axis["x"], y_color=axis["y"], z_color=axis["z"])
         self.view_cube = p.add_camera_orientation_widget()  # ViewCube, top right (DS-04)
+        rep = self.view_cube.GetRepresentation()
+        rep.SetXAxisColor(*(model.hex_rgb(axis["x"]) / 255.0))  # VTK's default Y/Z are
+        rep.SetYAxisColor(*(model.hex_rgb(axis["y"]) / 255.0))  # yellow/green
+        rep.SetZAxisColor(*(model.hex_rgb(axis["z"]) / 255.0))
         # HUD (§7.5): a plain text actor. VTK's corner annotation re-fits its font on every
         # change (about 25 ms a frame); the readout also refreshes at HUD_RATE, not every frame.
         self.hud = vtk.vtkTextActor()
