@@ -376,7 +376,7 @@ lidar cloud (blue rings) are visible. At the default camera distance the quadrot
 FPS readout showed 21-22 with the sim running live on this machine, for both templates
 (VP-08's 30 FPS GL test measures rendering alone and passes).
 
-## M9: Monte Carlo + RL (done, awaiting approval)
+## M9: Monte Carlo + RL (approved 2026-11-22)
 
 Plan: (1) analysis functions + sweep runner, (2) results view, (3) `make_env` + VecEnv +
 drone-landing env, (4) training panel + click-to-replay, then the PPO done-when.
@@ -435,6 +435,35 @@ drone-landing env, (4) training panel + click-to-replay, then the PPO done-when.
 | ML-03 | ✅ | `rl/metrics.py`, `ui/training_panel.py`; `tests/rl/test_metrics.py`, `tests/ui/test_training_panel.py` |
 | ML-04 | ✅ | `record_every`; `test_recorded_episodes_replay_as_runs`, `test_clicking_a_recorded_episode_replays_it` + manual check |
 
+
+## M10: Polish + hero demo (in progress)
+
+Plan: (1) performance pass against NF-01–NF-07 with a rerunnable benchmark, (2) TB-01/TB-02
+and DS-11 checks, (3) design QA of every panel in both themes, (4) README with GIFs and
+`docs/ARCHITECTURE.md`, (5) the hero demo recording.
+
+- Part 1 (performance): `benchmarks/nf_bench.py` measures NF-02, NF-03, NF-05, NF-06, NF-07
+  (how, D-117). Changes (D-118): static MuJoCo worlds skip `mj_step`; a float RK4 fast path
+  for `Quadrotor` (bit-identical); scalar attitude controller, `quat_matrix`, `rot_log`;
+  cached name lookups and state slots; lazy SciPy import. Windows box (i7-10700K, Python
+  3.13), before -> after:
+
+  | Target | Required | Before | After |
+  |---|---|---|---|
+  | NF-02 UC-3 arm RTF, dt 1 ms | >= 20x | 6.0x | 9.5x |
+  | NF-03 UC-2 RTF, dt 1 ms | >= 10x | 1.6x | 3.8x |
+  | NF-05 cold start | <= 4 s | | start screen 2.0 s, main window 2.6 s ✅ |
+  | NF-06 determinism | 1 log | | 10 runs, 1 distinct log ✅ |
+  | NF-07 10 min UC-2 memory | <= 2 GB | | peak 1055 MB ✅ |
+
+  This machine ran UC-2 at 1.65x where the Mac ran 6.5x (M8), so the Mac (reference
+  hardware) should now clear NF-03; **rerun `python benchmarks/nf_bench.py` on the Mac** to
+  confirm. NF-02's floor here: MuJoCo's step alone is 45x, SimView's tick without user code
+  about 26x; the rest is the example's 100 Hz IK controller and the end-effector FK it logs
+  every tick.
+- 486 tests pass (offline: 20 skipped), 16 GL tests pass, lint clean. The DA-01 plot timing test
+  (`test_ten_signals_of_100k_samples_redraw_at_30_fps`, median ~25 ms vs 33 ms) failed once
+  under full-suite load and passed on rerun.
 
 ## Next
 

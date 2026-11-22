@@ -852,3 +852,31 @@ episode step is the env's own step count times the number of envs (close to SB3'
 Also fixed on the way (RI-01, from M5b): the last row of a saved run showed the scene's start
 state, because the timeline's last row means "live"; a saved run has no live state, so its last
 row is drawn.
+
+**D-117 — How the NF targets are measured (M10).** `benchmarks/nf_bench.py` runs each check in
+a fresh child process. NF-02: `examples/ur5_pick.py` (the UC-3 arm with its IK controller and
+logged channel) with `dt` set to 1 ms, 10 s headless. NF-03: the UC-2 template, 30 s headless.
+RTF is simulated time over the wall time of the tick loop (`Run.rtf`), not counting scene
+loading or the Parquet write. NF-05: "usable" means the window is shown and the Qt event loop
+is running (the first zero-delay timer fires), timed from the process's creation, so the
+interpreter start and every import count; both the start screen and an empty main window are
+measured, best of 3 after one warm-up launch. NF-06: 10 UC-2 runs of 5 s, SHA-256 of each
+Parquet file. NF-07: peak resident memory of a UC-2 run with its full log; `--full` runs the
+10 minutes, the quick mode extrapolates a 60 s run linearly (the log array is preallocated, so
+it grows linearly with the duration). The reference hardware is the GTX 1660 / M1 class named
+in NF-01; the Windows dev box (i7-10700K, GTX 1050 Ti, Python 3.13) is slower on single-threaded Python, so
+its numbers are a lower bound and the Mac's are the ones the targets are judged on.
+
+**D-118 — Performance changes (M10, NF-02, NF-03).** No public API changes. (1) A MuJoCo world
+with no degrees of freedom (only static shapes and the mocap mirrors of custom entities, as in
+UC-1 and UC-2) skips `mj_step`; mocap poses are loaded when something reads them
+(`World.kinematics()`, now also called by the viewport and recorder before they read body poses).
+(2) `Quadrotor` integrates RK4 on Python floats when its integrator is `rk4` and `derivative`
+isn't overridden, reading the input and the wind once per tick (they are constant across the
+stages); results are bit-identical to the generic integrator. (3) The attitude controller,
+`quat_matrix`, and `se3.rot_log` use scalar closed forms (SciPy kept for rotations near pi);
+results match within 1e-13. (4) Cached lookups: state indices by name, a robot's frame and
+actuator ids (per compiled model), the nav filter's F and Q (per dt), each world member's qpos
+and qvel slots as slices. (5) `fk` skips MuJoCo's centre-of-mass pass (only Jacobians and
+dynamics need it). (6) SciPy's integrator is imported on first RK45 use (about 1 s of startup).
+

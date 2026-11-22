@@ -18,11 +18,20 @@ from simview.toolboxes.robotics import se3
 
 
 def resolve_frame(robot: Robot, frame: str | None) -> tuple[mujoco.mjtObj, int]:
-    """(object type, id) of a body or site of `robot`."""
+    """(object type, id) of a body or site of `robot` (cached per compiled model)."""
+    model = robot.model
+    cache = getattr(robot, "_frames", None)
+    if cache is None or cache[0] is not model:
+        cache = (model, {})
+        robot._frames = cache  # noqa: SLF001 - private to the robotics toolbox
+    hit = cache[1].get(frame)
+    if hit is not None:
+        return hit
     full = robot.full(frame or robot.default_frame)
     for obj in (mujoco.mjtObj.mjOBJ_BODY, mujoco.mjtObj.mjOBJ_SITE):
-        i = mujoco.mj_name2id(robot.model, obj, full)
+        i = mujoco.mj_name2id(model, obj, full)
         if i >= 0:
+            cache[1][frame] = (obj, i)
             return obj, i
     raise KeyError(f"{robot.name} has no frame (body or site) named {frame!r}")
 
@@ -36,8 +45,15 @@ def scratch(robot: Robot) -> mujoco.MjData:
     return cached[1]
 
 
-def posed(robot: Robot, q: np.ndarray | None = None, qd: np.ndarray | None = None) -> mujoco.MjData:
-    """Scratch data with the world's current state, the robot at `q` (and `qd`), kinematics done."""
+def posed(
+    robot: Robot,
+    q: np.ndarray | None = None,
+    qd: np.ndarray | None = None,
+    *,
+    com: bool = True,
+) -> mujoco.MjData:
+    """Scratch data with the world's current state, the robot at `q` (and `qd`), kinematics done
+    (and the centre-of-mass quantities Jacobians and dynamics need, unless `com=False`)."""
     data = scratch(robot)
     data.qpos[:] = robot.data.qpos
     data.qvel[:] = 0.0
@@ -48,14 +64,15 @@ def posed(robot: Robot, q: np.ndarray | None = None, qd: np.ndarray | None = Non
     if qd is not None:
         data.qvel[robot.vidx] = qd
     mujoco.mj_kinematics(robot.model, data)
-    mujoco.mj_comPos(robot.model, data)
+    if com:
+        mujoco.mj_comPos(robot.model, data)
     return data
 
 
 def fk(robot: Robot, q: np.ndarray | None = None, frame: str | None = None) -> np.ndarray:
     """World pose of `frame` at joint positions `q` (default: the robot's current `q`)."""
     obj, i = resolve_frame(robot, frame)
-    data = posed(robot, q)
+    data = posed(robot, q, com=False)  # poses only: no centre-of-mass pass (NF-02)
     if obj == mujoco.mjtObj.mjOBJ_BODY:
         return se3.make(data.xmat[i].reshape(3, 3), data.xpos[i])
     return se3.make(data.site_xmat[i].reshape(3, 3), data.site_xpos[i])

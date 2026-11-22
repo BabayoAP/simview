@@ -182,6 +182,7 @@ class NavFilter:
         P0 = np.diag([pos_std**2] * 3 + [vel_std**2] * 3)
         r = np.broadcast_to(np.asarray(gps_std, dtype=np.float64), (3,))
         self.accel_var = float(accel_std) ** 2
+        self._cache: dict[tuple[str, float], np.ndarray] = {}
         cls = {"ekf": EKF, "ukf": UKF}.get(kind)
         if cls is None:
             raise ValueError("kind must be 'ekf' or 'ukf'")
@@ -191,11 +192,14 @@ class NavFilter:
         self._H = np.hstack([np.eye(3), np.zeros((3, 3))])
         self.filter: EKF | UKF = cls(x0, P0, self._f, self._h, self._Q, np.diag(r**2), **kw)
 
-    @staticmethod
-    def _F(dt: float) -> np.ndarray:
-        F = np.eye(6)
-        F[:3, 3:] = dt * np.eye(3)
-        return F
+    def _F(self, dt: float) -> np.ndarray:
+        cached = self._cache.get(("F", dt))
+        if cached is None:
+            cached = np.eye(6)
+            cached[:3, 3:] = dt * np.eye(3)
+            cached.flags.writeable = False
+            self._cache[("F", dt)] = cached
+        return cached
 
     @staticmethod
     def _f(x: np.ndarray, a: np.ndarray | None, dt: float) -> np.ndarray:
@@ -206,10 +210,16 @@ class NavFilter:
         return x[:3]
 
     def _Q(self, dt: float) -> np.ndarray:
-        g = np.concatenate([np.full(3, 0.5 * dt**2), np.full(3, dt)])
-        Q = np.outer(g, g) * self.accel_var
-        mask = np.kron(np.ones((2, 2)), np.eye(3))  # axes are independent
-        return Q * mask
+        # Cached per dt: the IMU rate is fixed, and rebuilding it was ~10% of UC-2's tick.
+        cached = self._cache.get(("Q", dt))
+        if cached is None:
+            g = np.concatenate([np.full(3, 0.5 * dt**2), np.full(3, dt)])
+            Q = np.outer(g, g) * self.accel_var
+            mask = np.kron(np.ones((2, 2)), np.eye(3))  # axes are independent
+            cached = Q * mask
+            cached.flags.writeable = False
+            self._cache[("Q", dt)] = cached
+        return cached
 
     def predict(self, dt: float, specific_force: Sequence[float], rotation: np.ndarray) -> None:
         """Propagate by `dt` with an IMU specific force (body frame) and the body rotation."""
