@@ -37,3 +37,16 @@ Short answers are fine. Each has a recommended default that will be used if you 
     then M9, then M10/M11 branches get rebased on the new `main`.*
 12. **Drafts like this one:** OK to keep proposing PRD changes as "draft, pending approval" with
     nothing built until you approve? *Default: yes.*
+
+## From the overnight security review (D-136)
+
+13. **Git history:** no keys or tokens, but the history has your personal Gmail and Mac hostnames as
+    commit author emails (77 commits) and 28 old `Co-Authored-By` trailers. Clean it with a history
+    rewrite (force push) or leave it? *Default: set a GitHub noreply email for future commits and leave
+    history as is.*
+14. **Block diagrams count as code:** opening a `.svd` runs the Python Function blocks' files to read
+    their ports. Keep it as documented in SECURITY.md, or ask before opening diagrams from elsewhere?
+    *Default: keep, documented.*
+15. **IPC still uses pickle** (now only after a per-session signature check). Move to a non-pickle
+    format later? *Default: not needed for a local tool; revisit if a network mode (VW-33) arrives.*
+

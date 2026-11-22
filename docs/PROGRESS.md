@@ -17,7 +17,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M8: Sensors + Aero/Vehicles toolboxes | ✅ Approved 2026-11-21 | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
 | M9: Monte Carlo + RL | ✅ Approved 2026-11-22 | `m9-monte-carlo-rl` | SE-08, SE-09, DA-05, DA-06, ML-01–ML-04 |
 | M10: Polish + hero demo | In progress | `m10-polish-demo` | NF-01–NF-09, TB-01, TB-02, DS-11 |
-| M11: Vision world model (PRD 1.4) | Planned, after M10 (D-121) | `m11-vision-world-model` | VW-01–VW-11 |
+| M11: Vision world model (PRD 1.4) | Built 2026-11-22, awaiting approval (GL checks pending) | `m11-vision-world-model` | VW-01–VW-11 |
 
 ## M1: Skeleton + design system
 
@@ -486,6 +486,48 @@ and DS-11 checks, (3) design QA of every panel in both themes, (4) README with G
 - After part 1: 486 tests pass (offline: 20 skipped), 16 GL tests pass, lint clean. The DA-01 plot timing test
   (`test_ten_signals_of_100k_samples_redraw_at_30_fps`, median ~25 ms vs 33 ms) failed once
   under full-suite load and passed on rerun.
+
+## M11: Vision world model (PRD 1.4, built 2026-11-22, awaiting approval)
+
+Built on `m11-vision-world-model` (branched from `m10-polish-demo`) while the owner was away, at
+the owner's request, before M10 parts 3–5 were finished (see QUESTIONS_FOR_TOMORROW.md).
+Design: D-122–D-134; audit fixes D-135; security review D-136.
+
+- Part A (9585a10): `simview.perception`: frame streams, camera rigs, dataset format + a
+  NumPy/zlib PNG codec (no new dependency), pipeline, back-projection, occupancy grid, BEV map,
+  accuracy against ground truth. `scene.add_pipeline`, `ctx.streams`.
+- Part B (80b7add): perception snapshots + scalar signals in run logs, `load_snapshots`,
+  `vision_drive` template (5th start-screen card, 8 cameras, no lidar), `benchmarks/vision_bench.py`.
+- Part C (6bbeb2f): live perception frames over shared memory (`ipc/perception.py`), voxel
+  rendering with a perceived / true / both toggle, Cameras and BEV Map docks, scrubbing and
+  saved-run replay of the perceived world.
+- Audit (912d931, 5699c71): 12 bugs fixed (runs closed on every exit path, pipeline default
+  inputs, stream reset, uint16 index overflow guard, NaN/inf handling, dataset validation).
+- Security (d0b85b1): IPC messages signed with a per-session key (pickle only after the check),
+  path containment for datasets / projects / Menagerie, confirm before a run log's scene runs,
+  FrameSlot bounds checks, scenario power-operator DoS. `SECURITY.md` added.
+
+### M11 requirement mapping
+
+| ID | Status | Evidence |
+|---|---|---|
+| VW-01 | ✅ | `tests/perception` (rig presets, intrinsics, attach) |
+| VW-02 | ✅ | stream semantics, determinism, `ctx.streams` tests |
+| VW-03 | ✅ | dataset round-trip byte-identical grid; validation errors |
+| VW-04 | ✅ | online vs offline `pipeline.run` identical outputs |
+| VW-05 | ✅ | back-projection against known geometry |
+| VW-06 | ✅ | log-odds, queries, rolling grid; IoU 0.89 static boxes ≤20 m @ 0.2 m |
+| VW-07 | ✅ | BEV tests |
+| VW-08 | ⏳ | offscreen panel/toggle tests pass; GL tests `test_voxels_render_and_toggle_perceived_vs_true`, `test_50k_voxels_render_at_30_fps` not run yet (screen locked) |
+| VW-09 | ✅ | snapshots byte-identical across runs; scrub + save/reopen tests; RI scenario on `ego.perception.min_obstacle_dist` |
+| VW-10 | ✅ | `evaluate` IoU / precision / recall tests |
+| VW-11 | ✅ | `vision_drive`: 20/20 layouts no collision (15 passed, 5 stopped), mean IoU ≈0.85, 1.25× real time headless (stride 3, 30 m, D-133) |
+
+Tests: 629 passed, 22 skipped (offline downloads + GL), lint clean. Pending with a display:
+`QT_QPA_PLATFORM=windows SIMVIEW_GL=1 pytest -m gl`, and a visual pass of vision_drive in both
+themes (voxel colors, BEV arrow, thumbnails). Limits: only the first pipeline is shown; camera
+thumbnails replay only when `camera_every` is set (off by default); early single-sample IoU while
+the car is still is 0.45–0.65 (the mean per run is the reported figure).
 
 ## Next
 
