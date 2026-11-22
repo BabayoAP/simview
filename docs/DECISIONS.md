@@ -760,3 +760,37 @@ attitude is taken as known (an attitude reference), so the models are linear and
 UKF agree; IMU biases aren't estimated. Process noise is the discrete white-noise acceleration
 model with the accelerometer noise. In the loop (25 s of gusty flight) the position error stays
 inside 3 sigma over 97% of the time and the mean NEES is consistent with 3 degrees of freedom.
+
+**D-106 — How a sweep sets parameters (SE-08).** Scene files read their parameters while they
+build the scene (`Wind(gust_std=p.gust)`), so setting `scene.params` after loading would change
+nothing that was already built. `load_scene(path, params={...}, seed=...)` runs the file with
+overrides: when the file declares a parameter that has an override, the override's value is
+used instead. Naming a parameter the file doesn't declare is an error. A later assignment in the
+file to the same name still wins (the override applies at declaration only).
+
+**D-107 — Sweep metrics are declared in the scene file.** `scene.metric(name, fn)` with
+`fn(run) -> float`. Trials run in spawned processes that load the scene file themselves, so the
+metric functions never have to be pickled (lambdas can't be). `sweep(metrics=...)` can also name
+logged columns (the last value is taken) or pass a dict of picklable callables. A trial that
+raises is a row with `status = "error"` and the message; the sweep carries on.
+
+**D-108 — Sweep plan, seeds, and files.** `params` maps names to constants or distributions
+(`Uniform`, `Normal` with optional clipping, `Choice`); `grid` maps names to value lists and
+every combination runs `trials` times. All samples are drawn up front from `seed`, and trial i
+runs with scene seed `seed + i`, so a sweep repeats exactly whatever the worker count. Results
+go to `runs/sweep-<time>/results.parquet` (params, metrics, status, wall time, sweep metadata in
+the schema); trial logs are dropped unless `keep_logs=True` (a 60 s UC-2 log is about 70 MB).
+`workers=0` runs in-process (debugging). Callers need an `if __name__ == "__main__":` guard.
+
+**D-109 — Analysis definitions (DA-05).** `step_info` follows MATLAB's `stepinfo`: 10-90% rise
+time (interpolated), overshoot in percent of the change, settling time as the last entry into a
+2% band; `initial`/`final` default to the first/last samples, and levels never reached give NaN.
+`bode` takes `(num, den)`, `(A, B, C, D)`, or a `scipy.signal.lti` and returns unwrapped phase
+in degrees. `fft` is the one-sided amplitude spectrum scaled so a sinusoid of amplitude A peaks
+at A; `psd` is Welch's method in units²/Hz. Both need evenly spaced samples. `rmse(a)` alone is
+the RMS of an error signal. They live in `simview/analysis/` (PRD §8.4) and load lazily as
+`sv.analysis`.
+
+**D-110 — `Run[column]` reads one column.** It used to read the whole Parquet file for every
+column; sweep metrics read several columns of large logs, so it now reads only the one asked
+for (same result; unknown names still raise `KeyError`).

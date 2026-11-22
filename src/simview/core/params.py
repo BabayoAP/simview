@@ -8,12 +8,32 @@ once a run starts, so a typo like `sim.params.kpp = 3` is an error instead of a 
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 import numpy as np
 
 PREFIX = "params."  # logged channel name prefix
+
+# SE-08: a Monte Carlo trial loads the scene file with some parameters replaced. Scene files
+# read parameters while they build the scene (`Wind(gust_std=p.gust)`), so the trial's value
+# has to win at the moment the file declares the name, not after the file has run (D-106).
+_OVERRIDES: ContextVar[dict[str, Any] | None] = ContextVar("simview_param_overrides", default=None)
+
+
+@contextmanager
+def overrides(values: Mapping[str, Any]) -> Iterator[set[str]]:
+    """Scenes created inside this block declare these parameters with these values instead of
+    their own. Yields the set of names that were declared (to report unknown ones)."""
+    state: dict[str, Any] = {"values": dict(values), "used": set()}
+    token = _OVERRIDES.set(state)
+    try:
+        yield state["used"]
+    finally:
+        _OVERRIDES.reset(token)
+
 
 Value = float | np.ndarray
 
@@ -43,6 +63,7 @@ class Params:
         object.__setattr__(self, "_values", {})
         object.__setattr__(self, "_frozen", False)
         object.__setattr__(self, "_on_declare", on_declare)
+        object.__setattr__(self, "_overrides", _OVERRIDES.get())
 
     def set(self, name: str, value: Any) -> None:
         values: dict[str, Value] = self._values
@@ -56,6 +77,10 @@ class Params:
             raise AttributeError(
                 f"no parameter {name!r}; declare it in the scene file (declared: {known})"
             )
+        state = self._overrides
+        if state is not None and name in state["values"]:
+            value = state["values"][name]
+            state["used"].add(name)
         values[name] = _coerce(name, value)
         if self._on_declare is not None:
             self._on_declare(name, values[name])

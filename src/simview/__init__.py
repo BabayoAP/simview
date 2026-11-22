@@ -4,9 +4,32 @@ __version__ = "0.1.0"
 
 from simview.core.entity import Entity  # noqa: E402
 from simview.core.scene import Scene  # noqa: E402
+from simview.runner.montecarlo import (  # noqa: E402
+    Choice,
+    Normal,
+    SweepResults,
+    Uniform,
+    sweep,
+)
 from simview.runner.run import Run, run  # noqa: E402
 
-__all__ = ["Entity", "Run", "Scene", "aero", "io", "robotics", "run", "sensors", "vehicles"]
+__all__ = [
+    "Choice",
+    "Entity",
+    "Normal",
+    "Run",
+    "Scene",
+    "SweepResults",
+    "Uniform",
+    "aero",
+    "analysis",
+    "io",
+    "robotics",
+    "run",
+    "sensors",
+    "sweep",
+    "vehicles",
+]
 
 
 def __getattr__(name: str) -> object:
@@ -23,6 +46,10 @@ def __getattr__(name: str) -> object:
         import simview.sensors as sensors
 
         return sensors
+    if name == "analysis":
+        import simview.analysis as analysis
+
+        return analysis
     if name == "io":
         import simview.io as io
 

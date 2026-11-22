@@ -107,12 +107,23 @@ class Scene:
         # SC-05: live parameters; scalars are logged as `params.<name>` channels.
         self.params = Params(on_declare=self._param_declared)
         self.diagrams: dict[str, Any] = {}  # BD-04/05: name -> blocks.runtime.DiagramRun
+        self.metrics: dict[str, Callable[[Any], float]] = {}  # SE-08: name -> fn(run)
 
     def _param_declared(self, name: str, value: Value) -> None:
         if isinstance(value, float):
             channel = PREFIX + name
             self.channels[channel] = lambda sim, n=name: float(sim.params[n])
             self.channel_units[channel] = ""
+
+    def metric(self, name: str, fn: Callable[[Any], float]) -> None:
+        """Declare a per-run result (SE-08): `fn(run)` gets the finished `Run` and returns a
+        number, e.g. `scene.metric("delivery_time", lambda run: run["d0_delivered"][-1])`.
+        Monte Carlo sweeps collect every declared metric into their results table."""
+        if not name.isidentifier():
+            raise ValueError(f"metric name {name!r} must be an identifier")
+        if name in self.metrics:
+            raise ValueError(f"metric {name!r} is already declared")
+        self.metrics[name] = fn
 
     def physics(self) -> World:
         """The scene's MuJoCo world (created on first use, so ODE-only scenes never load it)."""

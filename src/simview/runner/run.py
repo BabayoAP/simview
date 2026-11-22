@@ -35,7 +35,9 @@ class Run:
         return pq.read_table(self.path)
 
     def __getitem__(self, column: str) -> np.ndarray:
-        return self.table().column(column).to_numpy()
+        if column not in self.columns:
+            raise KeyError(column)
+        return pq.read_table(self.path, columns=[column]).column(0).to_numpy()
 
     @property
     def columns(self) -> list[str]:

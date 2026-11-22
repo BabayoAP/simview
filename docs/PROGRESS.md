@@ -15,7 +15,8 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M6: Console + workspace | ✅ Approved 2026-11-19 | `main` | SC-01–SC-05, IO-02, IO-04 |
 | M7: Block editor | ✅ Approved 2026-11-20 (CI: green except macOS GL, see Next) | `main` | BD-01–BD-08, DS-10 |
 | M8: Sensors + Aero/Vehicles toolboxes | ✅ Approved 2026-11-21 | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
-| M9–M10 | Not started | | see PRD §10 |
+| M9: Monte Carlo + RL | In progress | `m9-monte-carlo-rl` | SE-08, SE-09, DA-05, DA-06, ML-01–ML-04 |
+| M10 | Not started | | see PRD §10 |
 
 ## M1: Skeleton + design system
 
@@ -374,6 +375,27 @@ lidar cloud (blue rings) are visible. At the default camera distance the quadrot
 3-sigma ellipsoids (about 0.2 m) can't be made out (not checked zoomed in). The viewport's
 FPS readout showed 21-22 with the sim running live on this machine, for both templates
 (VP-08's 30 FPS GL test measures rendering alone and passes).
+
+## M9: Monte Carlo + RL (in progress)
+
+Plan: (1) analysis functions + sweep runner, (2) results view, (3) `make_env` + VecEnv +
+drone-landing env, (4) training panel + click-to-replay, then the PPO done-when.
+
+- Part 1: `sv.sweep(scene_file, duration, params=..., grid=..., trials=..., workers=...)` runs
+  trials in spawned processes and returns `SweepResults` (one Parquet table: trial, seed,
+  params, metrics, status, error, wall time). Distributions `sv.Uniform`, `sv.Normal`,
+  `sv.Choice`. Scene files declare metrics with `scene.metric(name, fn)`; `load_scene(path,
+  params=, seed=)` overrides parameters at declaration (D-106..D-108). UC-2 declares
+  `delivery_time`, `delivered`, `rms_error`, `max_deviation`. `sv.analysis`: `step_info`,
+  `bode`, `fft`, `psd`, `rmse` on SciPy (DA-05, D-109). `Run[column]` reads one column (D-110).
+  Also fixed CI: the VP-08 GL frame bound is loose under software rendering (on the M8 branch).
+- 50-trial UC-2 Monte Carlo (gust ~ U(0.5, 3) m/s, GPS noise ~ U(0.3, 1.5) m, 60 s each,
+  16 workers on the Windows box): finishes in 272 s, 0 failures, all 3 drones deliver in every
+  trial (22.4-23.0 s), RMS estimation error 0.10-0.43 m (correlation with GPS noise 0.96), max
+  route deviation 0.27-1.02 m. One UC-2 run alone is 1.65x real time on this machine (6.5x on
+  the Mac).
+- 466 tests pass (Windows, offline: 20 skipped); 15 new in `tests/runner/test_montecarlo.py`
+  (incl. a 50-trial parallel sweep) and `tests/analysis/` (closed-form checks). Lint clean.
 
 ## Next
 
