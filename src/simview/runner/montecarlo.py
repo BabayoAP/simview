@@ -22,6 +22,7 @@ from __future__ import annotations
 import itertools
 import json
 import os
+import shutil
 import time
 import traceback
 from collections.abc import Callable, Mapping, Sequence
@@ -179,6 +180,7 @@ def run_trial(spec: TrialSpec) -> dict[str, Any]:
         if not spec.keep_log:
             _remove(log)
             _remove(context_path(log))
+            shutil.rmtree(log.with_suffix(".perception"), ignore_errors=True)  # VW-09 side files
     row["wall_s"] = time.perf_counter() - start
     row["log"] = spec.log if spec.keep_log and row["status"] == "ok" else ""
     return row

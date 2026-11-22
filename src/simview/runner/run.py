@@ -142,7 +142,12 @@ def run(
         sim.step()
         log.record()
     wall = time.perf_counter() - start
+    sim.close()
     path = Path(out) if out is not None else default_log_path(scene.seed)
     log.write(path, run_metadata(scene, duration, source="sim", params=start_params))
+    if scene.pipelines:
+        from simview.perception.runlog import write_snapshots
+
+        write_snapshots(path, scene.pipelines)  # VW-09: `<run>.perception/` beside the log
     write_context(path, scene)
     return Run(path, n, wall, duration)

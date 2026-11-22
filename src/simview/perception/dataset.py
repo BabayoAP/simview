@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import time
+import weakref
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -319,17 +320,37 @@ def write_dataset(path: str | Path, frames: Iterable[Frame], depth: DepthFormat 
 
 class Record:
     """Pipeline stage that exports a run's camera streams as a dataset: it writes each step's
-    frames to `path` (cameras.json rewritten every step) and passes them on unchanged."""
+    frames' images to `path` as they arrive and passes the frames on unchanged. The index
+    (cameras.json) is written when the run ends (`close()`), every `flush_every` steps (None =
+    only at the end), and when the stage is reset or garbage-collected, so a long run doesn't
+    rewrite a growing file every step (D-132)."""
 
     output = "record"
 
-    def __init__(self, path: str | Path, depth: DepthFormat = "npy") -> None:
+    def __init__(
+        self, path: str | Path, depth: DepthFormat = "npy", *, flush_every: int | None = 100
+    ) -> None:
+        if flush_every is not None and flush_every < 1:
+            raise ValueError("flush_every must be a positive number of steps (or None)")
         self.path = Path(path)
         self.depth: DepthFormat = depth
+        self.flush_every = flush_every
         self.writer: DatasetWriter | None = None
+        self._steps = 0
+        self._finalizer: weakref.finalize | None = None
 
     def reset(self) -> None:
+        self.close()
         self.writer = DatasetWriter(self.path, self.depth)
+        self._steps = 0
+        # an unclosed run (e.g. a live session that is dropped) still leaves a valid folder
+        self._finalizer = weakref.finalize(self, _flush_writer, self.writer)
+
+    def close(self) -> None:
+        """Write the dataset index (cameras.json); called when the run ends."""
+        if self._finalizer is not None:
+            self._finalizer()  # flushes once and detaches
+            self._finalizer = None
 
     def __call__(self, frames: list[Frame]) -> list[Frame]:
         if self.writer is None:
@@ -337,5 +358,11 @@ class Record:
         assert self.writer is not None
         for f in frames:
             self.writer.add(f)
-        self.writer.flush()
+        self._steps += 1
+        if self.flush_every is not None and self._steps % self.flush_every == 0:
+            self.writer.flush()
         return frames
+
+
+def _flush_writer(writer: DatasetWriter) -> None:
+    writer.flush()

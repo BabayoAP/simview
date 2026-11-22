@@ -18,6 +18,7 @@ import math
 from collections.abc import Callable, Iterable, Sequence
 from typing import TYPE_CHECKING, Any
 
+from simview.perception.runlog import PerceptionLog
 from simview.perception.stream import Frame, Reader, Stream
 
 if TYPE_CHECKING:
@@ -35,7 +36,13 @@ def stage_output(stage: Stage) -> str:
 class Pipeline:
     """`stages` run in order at `rate` Hz on new items of `inputs`: a `CameraRig`, a stream
     name, or a list of them (None: every camera stream in the run). `name` prefixes the output
-    streams (e.g. "ego" -> "ego.occupancy")."""
+    streams (e.g. "ego" -> "ego.occupancy").
+
+    Logging with the run (VW-09, D-131), when a stage is an `OccupancyGrid`: `signals` adds
+    `<entity>.perception.min_obstacle_dist` and `.occupied_voxels` to the run log (`entity`
+    defaults to the input rig's entity, else `name`), plus `.iou` against ground truth within
+    `iou_radius` m when given; `snapshot_every` (s, None = off) stores the occupied voxels and BEV
+    image beside the log; `camera_every` (s, default off) stores the input camera frames."""
 
     def __init__(
         self,
@@ -45,6 +52,11 @@ class Pipeline:
         inputs: Any = None,  # noqa: ANN401 - a rig, a stream name, or a list of them
         name: str = "perception",
         maxlen: int = 64,
+        entity: str | None = None,
+        signals: bool = True,
+        iou_radius: float | None = None,
+        snapshot_every: float | None = 0.5,
+        camera_every: float | None = None,
     ) -> None:
         if not stages:
             raise ValueError("a pipeline needs at least one stage")
@@ -63,6 +75,14 @@ class Pipeline:
             f"{name}.{o}": Stream(f"{name}.{o}", maxlen) for o in outs
         }
         self._readers: list[Reader] = []
+        self.log = PerceptionLog(
+            self,
+            entity=entity,
+            signals=signals,
+            iou_radius=iou_radius,
+            snapshot_every=snapshot_every,
+            camera_every=camera_every,
+        )
 
     def __getitem__(self, output: str) -> Stream:
         """An output stream by short ("occupancy") or full ("ego.occupancy") name."""
@@ -75,6 +95,14 @@ class Pipeline:
                 reset()
         for st in self.outputs.values():
             st.reset()
+        self.log.reset()
+
+    def close(self) -> None:
+        """Called when a run ends: stages with a `close()` (e.g. `Record`) finish their files."""
+        for s in self.stages:
+            close = getattr(s, "close", None)
+            if callable(close):
+                close()
 
     # -- one step ----------------------------------------------------------------------------
     def process(self, items: list[Any], t: float) -> None:
@@ -127,7 +155,9 @@ class Pipeline:
         items: list[Any] = []
         for r in self._readers:
             items += r.since_last()
-        self.process(items, t)
+        if items:
+            self.process(items, t)
+            self.log.capture(items, t)
 
     # -- offline -----------------------------------------------------------------------------
     def run(self, source: Dataset | Iterable[Frame], speed: float | None = None) -> dict[str, Any]:

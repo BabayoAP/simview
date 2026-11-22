@@ -476,6 +476,9 @@ class Scene:
             self.controller(pipeline.rate)  # validates the rate
         if any(p is pipeline or p.name == pipeline.name for p in self.pipelines):
             raise ValueError(f"a pipeline named {pipeline.name!r} is already added")
+        log = getattr(pipeline, "log", None)
+        if log is not None and hasattr(log, "attach"):
+            log.attach(self)  # VW-09: `<entity>.perception.*` signals in the run log
         self.pipelines.append(pipeline)
         return pipeline
 

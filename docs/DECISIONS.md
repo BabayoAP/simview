@@ -1029,3 +1029,73 @@ signals is left to the VW-09 logging work.
 (`simview.toolboxes.builtin:perception`, in `registry.BUILTINS` and the pyproject entry points),
 which also registers `CameraRig` as a toolbox sensor (`sv.sensors.CameraRig`). `"perception"` is
 in `simview.__all__`, like the other built-in toolbox modules.
+
+**D-131 — Logging and replay of perceived worlds (VW-09, M11 part B).** A `Pipeline` with an
+`OccupancyGrid` stage logs with the run, configured by new keyword arguments (defaults keep
+part A's behaviour otherwise): `entity=None, signals=True, iou_radius=None, snapshot_every=0.5,
+camera_every=None`. **Signals** (added to `scene.channels` by `scene.add_pipeline`, so they are
+ordinary Parquet columns that plots and RI scenarios read): `<entity>.perception.min_obstacle_dist`
+(m, horizontal distance from the grid's ego position, i.e. the vehicle origin, to the nearest
+occupied voxel centre over all heights; **NaN** while nothing is occupied, so plots break the line
+and scenario comparisons are false), `<entity>.perception.occupied_voxels`, and with `iou_radius`
+`<entity>.perception.iou` = `evaluate(grid, scene, z_band=(0.2, 2.5), radius=iou_radius,
+exclude=[entity])` (recomputed at most every 0.5 s because it reads every geom; it scores, the
+planner never sees it). `entity` defaults to the input rig's entity, else the pipeline name.
+Values are cached per grid update. **Snapshots** (every `snapshot_every` s of sim time, at the
+first pipeline step at or after each due time, so t = 0, 0.5, 1.0 ... at 10 Hz) are kept in memory
+and written once when `sv.run` ends to `<run>.perception/<pipeline>.parquet` beside the log (a
+folder, so `Catalog`'s `*.parquet` glob doesn't list it as a run): one row per snapshot with `t`,
+`version`, `res`, `origin` (3), `shape` (3), `voxels` (list<uint16>, the occupied (i, j, k)
+flattened), `bev_origin`, `bev_res`, `bev_shape` (ny, nx) and `bev` (the gray BEV image bytes;
+D-127 colours are gray, so one channel is stored). **Camera frames** (every `camera_every` s,
+default off) go to `<pipeline>.cameras.parquet`: `t`, `camera`, `width`, `height`, `rgb` bytes
+(no depth). Parquet because the run log already relies on `pq.write_table` being byte-identical
+for identical data (NF-06, tested on both files); npz was rejected because zip entries carry
+timestamps. **Reader** (for the UI's timeline scrubbing): `sv.perception.load_snapshots(run,
+pipeline=None) -> Snapshots` (`run` = log path or `Run`; None = the only/first pipeline);
+`Snapshots.times`, `len`, `[i]`, `index_at(t)`, `at(t) -> Snapshot | None` (newest at or before
+t), `cameras`, `camera_at(camera, t) -> CameraFrame | None`; `Snapshot(t, version, res, origin,
+shape, indices (N,3), bev (ny,nx,3) uint8 | None, bev_origin, bev_res)` with `.centers` and
+`.occupancy()`; `snapshot_pipelines(run)`, `perception_dir(run)`. Sweeps delete the folder with a
+trial's log unless logs are kept. Live GUI sessions don't write side files yet (the UI part
+decides when a session's run is saved); `PerceptionLog.write(path)` / `runlog.write_snapshots`
+are the hooks for that.
+
+**D-132 — `Record` writes its index at the end (VW-03 perf fix).** Part A's `Record` rewrote
+cameras.json every step (quadratic in run length). Now images are still written as frames arrive,
+but cameras.json is written when the run ends (`Sim.close()`, new, called by `sv.run`; it calls
+each pipeline's new `close()`, which calls stages' `close()`), every `flush_every` steps
+(`Record(path, depth, *, flush_every=100)`, None = only at the end), and by a `weakref.finalize`
+when the stage is reset or collected, so a dropped live session still leaves a valid folder. A
+dataset read while a run is still going may lag up to `flush_every` steps. Replay stays
+byte-identical (tested through `Sim.close()` and through `sv.run`).
+
+**D-133 — `vision_drive` template and the M11 checks (VW-11).** Registered as a fifth start-screen
+card by the built-in `perception` toolbox (`add_template`, icon "eye"); the 4 flagship cards are
+unchanged. Scene: the UC-1 road (110 m straight, 60 m-radius quarter arc, 60 m straight, 2
+lanes), the UC-1 kinematic bicycle with `CameraRig.surround(8, 160x120, 10 Hz)` and no lidar,
+pipeline `ego` = `BackProject(max_range=30, stride=3)` → `OccupancyGrid(0.2 m, 60 m rolling,
+height 0-3 m)` → `BevMap()`, with `iou_radius=20`. Obstacles: 4 parked cars on the right
+shoulder, a pedestrian-sized box (0.6 x 0.6 x 1.7 m) in the ego lane, a stalled `ScriptedNPC`
+(speed 0) in the ego lane, and, in every 4th layout, a barrier across the left lane next to it so
+the car must stop. All obstacles are static (simplest reading of "static and slow"; a moving
+object would leave a trail in a grid without decay). **Seeding:** the obstacle layout must exist
+before the MuJoCo world compiles, but `load_scene(seed=)` sets the seed after the file runs, so
+the jitter is driven by a scene parameter `layout` (0 = nominal, others jitter positions with
+`default_rng(layout)`; `layout % 4 == 3` adds the barrier); the 20-run test sweeps `layout` 0-19
+(seeds 0-19 too). **Planner** (10 Hz): reads only `ctx.streams["ego.occupancy"]` plus the ego's
+own state and the lane map (map data, not obstacle geometry); occupied voxels between 0.3 and
+2.2 m are put in lane-0 coordinates, corridors 1.4 m either side of each lane centre are checked;
+it changes to the left lane when its lane is blocked within 28 m and the left lane is clear
+further, returns when its lane is clear from 7 m behind to 20 m ahead, and sets speed from the
+gap ahead (standoff 4 m, headway 1.2 s, 3 m/s² braking). **Checks:** (a) 20 of 20 layouts: no
+overlap between the ego footprint and any box geom's true footprint at any tick (separating
+axes, in the test only); the 15 open layouts pass the stalled car and end back in lane, the 5
+blocked ones stop; (b) IoU: each run's time-averaged `ego.perception.iou` ≥ 0.7 (observed:
+about 0.85; single early samples, with the car still and few views, are lower, ~0.45-0.65);
+(c) replay: D-132; (d) RTF on the dev box (i7-10700K): 1.25x median for a 14 s run
+(`benchmarks/vision_bench.py`). With part A's stride 2 and 35 m range it ran at 0.82x, so stride
+3 and a 30 m back-projection range (obstacles are still seen ≥ 30 m ahead, enough to change lanes
+at 10 m/s) are the trade-off: about half the rays, a slightly sparser grid. The 20-run sweep
+(parallel processes, ~75 s) is marked `slow` (new marker; runs by default, `-m "not slow"` skips
+it).

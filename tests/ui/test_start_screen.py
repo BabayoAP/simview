@@ -11,6 +11,7 @@ def test_four_template_cards(qapp, settings):
         "drone_delivery",
         "ur5_ik",
         "drone_landing",
+        "vision_drive",  # the built-in perception toolbox's card (D-133)
     ]
 
 

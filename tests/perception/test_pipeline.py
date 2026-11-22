@@ -107,6 +107,8 @@ def test_exported_run_replays_offline_to_a_byte_identical_grid(tmp_path):
     live = sim.streams["ego.occupancy"].latest()
     live_bytes, live_bev = live.logodds.tobytes(), sim.streams["ego.bev"].latest().image.copy()
     assert live.occupancy.any()
+    assert not (tmp_path / "ds" / "cameras.json").exists()  # the index is written at the end
+    sim.close()  # the run ends: Record writes cameras.json once (D-132)
     ds = Dataset(tmp_path / "ds")
     assert len(ds.cameras) == 8 and len(ds) == 8 * 6
     out = perceive.run(ds)

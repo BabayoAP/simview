@@ -67,6 +67,11 @@ class Sim:
         # Integer tick count times dt: no drift from summing dt.
         return self.tick * self.dt
 
+    def close(self) -> None:
+        """End the run: pipelines finish their files (e.g. a `Record` dataset's index)."""
+        for p, _ in self.pipelines:
+            p.close()
+
     def _sample(self, force: bool = False) -> None:
         due = [s for s, period in self.sensors if force or self.tick % period == 0]
         if not due:

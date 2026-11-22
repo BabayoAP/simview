@@ -26,3 +26,12 @@ def vehicles(tb: Toolbox) -> None:
 def perception(tb: Toolbox) -> None:
     tb.add_module("perception", "simview.perception")
     tb.add_sensor("simview.perception.rig:CameraRig")
+    from simview.templates import ROOT  # a plain Path; imports nothing heavy
+
+    tb.add_template(
+        "vision_drive",
+        "Vision Drive",
+        "Camera-only car: 8 cameras, occupancy grid, no lidar.",
+        ROOT / "vision_drive" / "scene.py",
+        icon="eye",
+    )

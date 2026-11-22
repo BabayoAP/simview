@@ -68,5 +68,6 @@ testpaths = ["tests"]
 markers = [
     "network: downloads robots from MuJoCo Menagerie (skipped when SIMVIEW_OFFLINE=1)",
     "gl: needs an OpenGL display (runs only when SIMVIEW_GL=1)",
+    "slow: takes about a minute or more (runs by default; skip with -m \"not slow\")",
 ]
 addopts = "-ra"
