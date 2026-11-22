@@ -20,6 +20,7 @@ def test_default_panel_areas(qapp, settings):
         "plots": A.BottomDockWidgetArea,
         "console": A.BottomDockWidgetArea,
         "runs": A.BottomDockWidgetArea,  # tabbed with the console (M5b)
+        "training": A.BottomDockWidgetArea,  # tabbed with the runs (M9)
     }
     assert {n: w.dockWidgetArea(d) for n, d in w.docks.items()} == expected
     assert w.central.currentWidget() is w.viewport  # a stack: empty state, then 3D view
@@ -58,7 +59,7 @@ def test_every_panel_has_empty_state(qapp, settings):
         assert states, widget
         for s in states:
             assert s.hint.text() and s.button.text()
-    assert len(DOCKS) == 8  # + Runs (M5b)
+    assert len(DOCKS) == 9  # + Runs (M5b), Training (M9)
 
 
 def test_layout_persists_per_project(qapp, settings):

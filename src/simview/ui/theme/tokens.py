@@ -173,6 +173,7 @@ WORKSPACE_PREVIEW_CHARS: Final = 60  # value preview length in the workspace bro
 WORKSPACE_VALUE_WIDTH: Final = 96  # px, starting width of the Value column (resizable)
 ARRAY_VIEWER_SIZE: Final = (640, 420)
 SWEEP_VIEW_SIZE: Final = (1040, 620)  # Monte Carlo results window (DA-06)
+TRAINING_SPLIT: Final = (180, 600)  # px: metric list | plot in the Training panel
 SWEEP_VIEW_SPLIT: Final = (540, 500)  # px: trials table | plots
 ARRAY_VIEWER_MAX_CELLS: Final = 1_000_000  # bigger arrays show their first rows
 

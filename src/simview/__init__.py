@@ -24,6 +24,9 @@ __all__ = [
     "aero",
     "analysis",
     "io",
+    "make_env",
+    "make_vec_env",
+    "rl",
     "robotics",
     "run",
     "sensors",
@@ -46,6 +49,14 @@ def __getattr__(name: str) -> object:
         import simview.sensors as sensors
 
         return sensors
+    if name == "log_metric":  # ML-03 (no RL extra needed)
+        from simview.rl.metrics import log_metric
+
+        return log_metric
+    if name in ("make_env", "make_vec_env", "rl"):
+        import simview.rl as rl
+
+        return rl if name == "rl" else getattr(rl, name)
     if name == "analysis":
         import simview.analysis as analysis
 

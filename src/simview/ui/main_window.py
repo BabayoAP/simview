@@ -46,6 +46,7 @@ from simview.ui.theme import icon, tokens
 from simview.ui.timeline.history import History
 from simview.ui.timeline.playback import Playback
 from simview.ui.timeline.widget import Timeline
+from simview.ui.training_panel import TrainingPanel
 
 # SE-10 playback speeds; 0 = as fast as possible.
 SPEEDS = (
@@ -69,8 +70,10 @@ DOCKS: tuple[tuple[str, str, Qt.DockWidgetArea], ...] = (
     ("plots", "Plots", Qt.DockWidgetArea.BottomDockWidgetArea),
     ("console", "Console / Editor", Qt.DockWidgetArea.BottomDockWidgetArea),
     ("runs", "Runs", Qt.DockWidgetArea.BottomDockWidgetArea),
+    ("training", "Training", Qt.DockWidgetArea.BottomDockWidgetArea),
 )
-LAYOUT_VERSION = 3  # 2: M5 panels, dropping layouts with the M4 viewport bug; 3: Runs (M5b)
+# 2: M5 panels, dropping layouts with the M4 viewport bug; 3: Runs (M5b); 4: Training (M9)
+LAYOUT_VERSION = 4
 CENTRAL_PAGES = ("3D View", "Diagram")  # BD-01: the block editor sits next to the 3D view
 COMPARE_ATOL, COMPARE_RTOL = 1e-6, 1e-6  # run comparison tolerance in the app (D-059)
 RUNS_ENV = "SIMVIEW_RUNS"  # overrides the run folder (default: `runs/` next to the scene file)
@@ -144,6 +147,10 @@ class MainWindow(QMainWindow):
         self._build_toolbar()
         self._build_central()
         self._build_docks()
+        self.training = TrainingPanel()  # ML-03 / ML-04, no scene needed
+        self.docks["training"].setWidget(self.training)
+        self.training.replay_requested.connect(self.replay_episode)
+        self.training.set_runs_folder(self.runs_folder())
         self.resize(QSize(*tokens.WINDOW_DEFAULT))
         self._apply_default_sizes()
         self.restore_layout()
@@ -215,6 +222,7 @@ class MainWindow(QMainWindow):
         self.block_editor.set_theme(new)
         for view in self.sweep_views:
             view.style(new)
+        self.training.style(new)
 
     # ----- chrome --------------------------------------------------------------------
     def _build_menu(self) -> None:
@@ -369,6 +377,8 @@ class MainWindow(QMainWindow):
                 a("file.open_scene").trigger,
             ),
         }
+        if name == "training":
+            return QWidget()  # replaced by the Training panel right after the docks are built
         if name == "timeline":
             hint = "Run a simulation to scrub through time."
             return EmptyState("clock-3", hint, "Run", a("sim.run").trigger, compact=True)
@@ -420,6 +430,7 @@ class MainWindow(QMainWindow):
         self.splitDockWidget(d["timeline"], d["plots"], Qt.Orientation.Vertical)
         self.splitDockWidget(d["plots"], d["console"], Qt.Orientation.Horizontal)
         self.tabifyDockWidget(d["console"], d["runs"])
+        self.tabifyDockWidget(d["runs"], d["training"])
         d["console"].raise_()
 
     def _apply_default_sizes(self) -> None:
@@ -492,6 +503,7 @@ class MainWindow(QMainWindow):
         self.opened_run = None
         assert self.runs is not None
         self.runs.set_folder(self.runs_folder())
+        self.training.set_runs_folder(self.runs_folder())
         self.playback.sim_running = False
         self.playback.reset(None)
         self.timer.start(int(1000 / tokens.VIEWPORT_FPS))
@@ -640,6 +652,8 @@ class MainWindow(QMainWindow):
         The 3D view is updated and rendered only when that moment changed (D-061)."""
         pb, h = self.playback, self.history
         shown = pb.shown
+        if shown is None and pb.recorded and h is not None and h.n:
+            shown = h.n - 1  # a saved run has no live state: its end is its last row (D-116)
         live = self._live_frame
         row = -1
         if h is not None and h.n:
@@ -990,6 +1004,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"SimView — {p.name}")
         if self.runs is not None:
             self.runs.set_folder(self.runs_folder())
+            self.training.set_runs_folder(self.runs_folder())
 
     def save(self) -> None:
         """Ctrl+S: save the project. With no project open, save the editor's script if it has
@@ -1033,6 +1048,17 @@ class MainWindow(QMainWindow):
         return manifest
 
     # ----- run investigation (PRD §5.11) ---------------------------------------------
+    def replay_episode(self, log: str) -> None:
+        """ML-04: replay an episode recorded during training (a normal run log)."""
+        from simview.investigate.runs import read_info
+
+        try:
+            run = read_info(log)
+        except (OSError, ValueError) as exc:
+            self.statusBar().showMessage(f"Can't open {Path(log).name}: {exc}", 6000)
+            return
+        self.open_run(run)
+
     def runs_folder(self) -> Path:
         override = os.environ.get(RUNS_ENV)
         if override:

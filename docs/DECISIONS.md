@@ -804,3 +804,51 @@ histogram of the chosen metric over the finished trials and a scatter of that me
 chosen parameter (or the trial number); selecting a row marks its trial in both, clicking a
 point selects its row. Sweeps run from scripts or the console; the in-process console waits
 for the sweep to finish (the UI is busy meanwhile), so long sweeps belong in a script.
+
+**D-112 — Scenes as Gymnasium envs (ML-01).** `sv.make_env(scene, obs_fn, reward_fn, done_fn,
+**task)` takes a `Scene`, a function that builds one, a scene file, or a template id. A scene file
+can declare its own task with `scene.rl_task(...)` (same keys; arguments to `make_env` override
+it), so `sv.make_env("drone_landing")` works as in UC-4. Each `reset()` builds a fresh `Sim` with
+a scene seed drawn from the env's RNG (so `reset(seed=s)` repeats exactly), then calls
+`reset_fn(sim, rng)` to randomize the start. The policy acts at `rate` Hz (default: every tick;
+it must divide the tick rate); one env step runs that many ticks and stops early on the tick
+`done_fn` turns true. `max_time` truncates. `success_fn` goes to `info["is_success"]` at the end
+of an episode, which SB3 reports as `success_rate`. The observation space is inferred (unbounded
+float32) when not given.
+
+**D-113 — How a policy drives the scene: `ctx.action`.** The env applies the action twice over:
+`act_fn(sim, action)` may return controller-style outputs `{entity: u}` that are applied
+directly, and the action itself is exposed to every scene controller as `ctx.action` (None when
+no policy is attached). Scenes with an inner loop (the quadrotor's attitude controller at
+100 Hz under a 25 Hz policy) read `ctx.action`, and the same scene file runs without a policy:
+the drone-landing controller falls back to a PD lander, so the start-screen card still works.
+
+**D-114 — Parallel envs (SE-09, ML-02).** `sv.make_vec_env(scene, n_envs, seed=, subprocess=True)`
+returns SB3's own `SubprocVecEnv` (spawned processes) or `DummyVecEnv`, each env wrapped in SB3's
+`Monitor`; env i is seeded `seed + i`. It builds the env list itself (not SB3's `make_vec_env`)
+so each env knows its index for recording. A `Scene` object can't be sent to other processes,
+so it is refused there; pass the file, a template id, or a builder function. Without the `rl`
+extra the scene and template still load; `make_env` then raises an ImportError naming the extra.
+
+**D-115 — RL extra and CI.** `pip install simview[rl]` = Gymnasium >= 1.0 and
+Stable-Baselines3 >= 2.3 (PRD §8, which pulls in PyTorch). CI installs CPU-only PyTorch from the
+PyTorch index first, so Linux runners don't download the CUDA wheels. RL tests use
+`pytest.importorskip`, so a dev install without the extra skips them. TensorBoard is not a
+dependency: SimView reads event files with its own small protobuf reader (scalars only, simple
+and tensor values; CRCs are not checked).
+
+**D-116 — Training metrics and episode replay (ML-03, ML-04).** A training run writes to a
+folder `runs/train-<time>/` (`sv.rl.training_dir()`; env worker processes inherit it through
+`SIMVIEW_TRAINING`): `metrics.jsonl` from `sv.log_metric(name, step, value)` and from
+`model.set_logger(sv.rl.sb3_logger())` (all of PPO's scalars), `episodes-<env>.jsonl` with each
+finished episode's return, length, success, and (every `record_every`th episode per env) the
+path of its full tick log under `episodes/`, written as a normal run log with its scene file,
+so the app replays it like any saved run. TensorBoard event files anywhere in the folder are read
+too. The Training panel is a new bottom dock, tabbed with Runs (layout version 4), present
+without a scene; it follows the newest `train-*` folder in the run folder (or one opened by
+hand), rereads the files once a second, plots the checked metrics against the step, and draws
+recorded episodes as large points on the episode-return curve: clicking one replays it. The
+episode step is the env's own step count times the number of envs (close to SB3's global step).
+Also fixed on the way (RI-01, from M5b): the last row of a saved run showed the scene's start
+state, because the timeline's last row means "live"; a saved run has no live state, so its last
+row is drawn.
