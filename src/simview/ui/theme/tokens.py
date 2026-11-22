@@ -172,6 +172,8 @@ EDITOR_GUTTER_PAD: Final = 8  # px either side of the line numbers
 WORKSPACE_PREVIEW_CHARS: Final = 60  # value preview length in the workspace browser
 WORKSPACE_VALUE_WIDTH: Final = 96  # px, starting width of the Value column (resizable)
 ARRAY_VIEWER_SIZE: Final = (640, 420)
+SWEEP_VIEW_SIZE: Final = (1040, 620)  # Monte Carlo results window (DA-06)
+SWEEP_VIEW_SPLIT: Final = (540, 500)  # px: trials table | plots
 ARRAY_VIEWER_MAX_CELLS: Final = 1_000_000  # bigger arrays show their first rows
 
 # Block editor (§7.7, DS-10). Category strips and port colors are >= 3:1 on bg.panel and

@@ -794,3 +794,13 @@ the RMS of an error signal. They live in `simview/analysis/` (PRD §8.4) and loa
 **D-110 — `Run[column]` reads one column.** It used to read the whole Parquet file for every
 column; sweep metrics read several columns of large logs, so it now reads only the one asked
 for (same result; unknown names still raise `KeyError`).
+
+**D-111 — Where sweep results open (DA-06).** In their own non-modal window (like the array
+viewer), from File → Open Sweep Results… (also the command palette) or `window.open_sweep(...)`
+with a `SweepResults`, its `results.parquet`, or its folder. A central page or dock would sit
+empty for every scene that isn't swept. The window has the trials table (sortable, numbers
+sort numerically, failed trials in `state.error` with the error as tooltip) and, beside it, a
+histogram of the chosen metric over the finished trials and a scatter of that metric against a
+chosen parameter (or the trial number); selecting a row marks its trial in both, clicking a
+point selects its row. Sweeps run from scripts or the console; the in-process console waits
+for the sweep to finish (the UI is busy meanwhile), so long sweeps belong in a script.

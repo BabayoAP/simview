@@ -394,7 +394,12 @@ drone-landing env, (4) training panel + click-to-replay, then the PPO done-when.
   trial (22.4-23.0 s), RMS estimation error 0.10-0.43 m (correlation with GPS noise 0.96), max
   route deviation 0.27-1.02 m. One UC-2 run alone is 1.65x real time on this machine (6.5x on
   the Mac).
-- 466 tests pass (Windows, offline: 20 skipped); 15 new in `tests/runner/test_montecarlo.py`
+- Part 2: results view (DA-06, D-111): `ui/sweep_view.py`, opened from File → Open Sweep
+  Results… or `window.open_sweep(...)`. Trials table (sortable, failures in red with the error),
+  histogram of any metric, scatter of the metric against any parameter, selection linked both
+  ways. 5 tests in `tests/ui/test_sweep_view.py`. Checked by eye in both themes on the 50-trial
+  UC-2 sweep (RMS error vs GPS noise: a clean rising line).
+- 471 tests pass after part 2 (Windows, offline: 20 skipped); part 1 added 15 in `tests/runner/test_montecarlo.py`
   (incl. a 50-trial parallel sweep) and `tests/analysis/` (closed-form checks). Lint clean.
 
 ## Next

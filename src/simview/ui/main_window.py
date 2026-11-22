@@ -41,6 +41,7 @@ from simview.ui.plots.panel import PlotPanel
 from simview.ui.plots.signals import SignalTree
 from simview.ui.runs_panel import RunsPanel
 from simview.ui.sim_panels import Inspector, NoViewport, SceneTree
+from simview.ui.sweep_view import SweepView
 from simview.ui.theme import icon, tokens
 from simview.ui.timeline.history import History
 from simview.ui.timeline.playback import Playback
@@ -116,6 +117,7 @@ class MainWindow(QMainWindow):
         self.scope_plots: list[Any] = []  # BD-08: the Scope blocks' plots
         self.sim_handle = SimHandle(self)  # `sim` in the console (SC-05)
         self.array_viewers: list[ArrayViewer] = []
+        self.sweep_views: list[SweepView] = []
         self.signal_tree: SignalTree | None = None
         self.runs: RunsPanel | None = None
         self.opened_run: Any = None  # RunInfo shown on the timeline, or None for the live sim
@@ -155,6 +157,7 @@ class MainWindow(QMainWindow):
         reg("file.open", "Open Project…", self._open_project, QKeySequence.StandardKey.Open, "File")
         reg("file.save", "Save Project", self.save, QKeySequence.StandardKey.Save, "File")
         reg("file.import_data", "Import Data (CSV, .mat)…", self.import_data_dialog, None, "File")
+        reg("file.open_sweep", "Open Sweep Results…", self.open_sweep_dialog, None, "File")
         reg("file.start", "Show Start Screen", self.show_start_screen.emit, None, "File")
         reg("file.open_scene", "Open Scene…", self._open_scene_dialog, "Ctrl+Shift+O", "File")
         reg("sim.run", "Run", self.run, None, "Simulation")
@@ -210,6 +213,8 @@ class MainWindow(QMainWindow):
         self.console.set_theme(new)
         self.editor.set_theme(new)
         self.block_editor.set_theme(new)
+        for view in self.sweep_views:
+            view.style(new)
 
     # ----- chrome --------------------------------------------------------------------
     def _build_menu(self) -> None:
@@ -886,6 +891,31 @@ class MainWindow(QMainWindow):
         self.array_viewers = [v for v in self.array_viewers if v.isVisible()] + [viewer]
         viewer.show()
         return viewer
+
+    def open_sweep_dialog(self) -> None:
+        start = str(self.runs_folder()) if self.runs_folder().is_dir() else ""
+        kinds = "Sweep results (results.parquet);;Parquet (*.parquet)"
+        path, _ = QFileDialog.getOpenFileName(self, "Open Sweep Results", start, kinds)
+        if path:
+            self.open_sweep(path)
+
+    def open_sweep(self, path: Any) -> SweepView | None:
+        """DA-06: a Monte Carlo sweep's results (a `SweepResults`, its `results.parquet`, or
+        its folder) in a results window."""
+        from simview.runner.montecarlo import SweepResults
+
+        try:
+            res = path if isinstance(path, SweepResults) else SweepResults.load(path)
+        except Exception as exc:  # noqa: BLE001 - a bad file is a message, not a crash
+            self.statusBar().showMessage(f"Couldn't open sweep results: {exc}", 6000)
+            return None
+        if not res.metrics and not res.params:
+            self.statusBar().showMessage(f"{res.path.name} isn't a sweep's results file", 6000)
+            return None
+        view = SweepView(res, self)
+        self.sweep_views = [v for v in self.sweep_views if v.isVisible()] + [view]
+        view.show()
+        return view
 
     def import_data_dialog(self) -> None:
         start = str(self.project.path) if self.project is not None else ""
