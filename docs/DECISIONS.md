@@ -880,3 +880,28 @@ actuator ids (per compiled model), the nav filter's F and Q (per dt), each world
 and qvel slots as slices. (5) `fk` skips MuJoCo's centre-of-mass pass (only Jacobians and
 dynamics need it). (6) SciPy's integrator is imported on first RK45 use (about 1 s of startup).
 
+
+**D-119 — Toolboxes (TB-01, TB-02).** A toolbox declares an entry point in the group
+`simview.toolboxes` whose value is a function `register(tb)`; `tb` (`simview.toolboxes.registry.
+Toolbox`) has `add_block(cls)`, `add_entity(cls)`, `add_sensor(cls)`, `add_template(id, title,
+description, scene, icon)` and `add_module(name, module)`. Entities, sensors and modules may be
+"module:attr" strings, imported on first use, so discovery stays cheap at startup (NF-05).
+SimView's robotics, aero and vehicles toolboxes register the same way (`simview.toolboxes.
+builtin`, declared in pyproject.toml as §8's layout says) but are also loaded directly, so a
+source checkout works without a reinstall. Discovery runs once at app startup and in the sim
+process, and lazily on the first unknown block type, template, or `sv.<name>`. What each kind
+plugs into: blocks go in the block library under one of the §7.7 categories (so the theme's
+category colors stay complete); modules become `simview.<name>` (SimView's own names can't be
+shadowed); sensors are also `simview.sensors.<Name>`; templates become start-screen cards after
+the 4 flagship ones (scene paths relative to the toolbox's package; unknown icons fall back to
+`box`); entity types are listed by `registry.entity_types()` (what TB-03's v1 manager panel will
+show). A toolbox that fails to import or register, or takes a name already used, is recorded in
+`registry.toolboxes()` with its error and skipped; SimView still starts. Test toolboxes are real
+installed distributions (`.dist-info` with `entry_points.txt` on `sys.path`).
+
+**D-120 — Keyboard shortcuts (DS-11).** §7.8's Ctrl/Cmd+1–4 switch workspace presets, which are
+DS-12 (v1); until then Ctrl+1 / Ctrl+2 switch the 3D view and the diagram (D-082). Undo/redo
+cover the block editor; the inspector is read-only and the viewport has no persistent scene edits
+yet, so there is nothing else to undo. The editor's standard shortcuts now bind every platform
+key (`setShortcuts`): before, Redo only got its first binding, which is Ctrl+Y on Windows, so
+§7.8's Ctrl+Shift+Z did nothing there.

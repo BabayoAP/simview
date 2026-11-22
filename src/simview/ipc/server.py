@@ -72,7 +72,9 @@ class Server:
     def load(self) -> bool:
         from simview.core.scheduler import Sim
         from simview.runner.headless import load_scene
+        from simview.toolboxes.registry import discover
 
+        discover()  # TB-01: the sim process finds installed toolboxes too
         self.running = False
         try:
             scene = load_scene(Path(self.scene_path))

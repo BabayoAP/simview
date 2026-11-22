@@ -461,7 +461,14 @@ and DS-11 checks, (3) design QA of every panel in both themes, (4) README with G
   confirm. NF-02's floor here: MuJoCo's step alone is 45x, SimView's tick without user code
   about 26x; the rest is the example's 100 Hz IK controller and the end-effector FK it logs
   every tick.
-- 486 tests pass (offline: 20 skipped), 16 GL tests pass, lint clean. The DA-01 plot timing test
+- Part 2 (TB-01, TB-02, DS-11): toolbox discovery through the `simview.toolboxes` entry point
+  (D-119): `simview/toolboxes/registry.py`, the built-ins registered through it
+  (`toolboxes/builtin.py`, entry points in pyproject.toml), toolbox blocks / entity types /
+  sensors / templates / `sv.<module>`, broken toolboxes reported instead of crashing.
+  Tests: `tests/toolboxes/test_registry.py` (fake toolboxes installed as real distributions).
+  DS-11 (D-120): `tests/ui/test_shortcuts.py` checks the §7.8 table; it found that Redo had no
+  Ctrl+Shift+Z on Windows (fixed). TB-01 ✅ TB-02 ✅ DS-11 ✅ (Ctrl+1–4 presets are DS-12, v1).
+- After part 1: 486 tests pass (offline: 20 skipped), 16 GL tests pass, lint clean. The DA-01 plot timing test
   (`test_ten_signals_of_100k_samples_redraw_at_30_fps`, median ~25 ms vs 33 ms) failed once
   under full-suite load and passed on rerun.
 

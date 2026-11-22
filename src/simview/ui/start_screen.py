@@ -20,16 +20,10 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from simview.templates import templates
 from simview.ui.panels import EmptyState
-from simview.ui.theme import icon, tokens
+from simview.ui.theme import ICON_DIR, icon, tokens
 
-# (template id, title, one-line description, Lucide icon)
-TEMPLATES: tuple[tuple[str, str, str, str], ...] = (
-    ("av_scenario", "Autonomous Vehicle", "Bicycle-model car with lidar and camera.", "car"),
-    ("drone_delivery", "Drone Delivery", "Quadrotor fleet, wind, GPS + IMU EKF.", "package"),
-    ("ur5_ik", "Robotic Arm (UR5)", "Drag the end effector, watch IK solve.", "bot"),
-    ("drone_landing", "Drone Landing (RL)", "Gymnasium env for PPO training.", "plane-landing"),
-)
 RECENT_KEY = "recent_projects"
 RECENT_MAX = 10
 
@@ -118,8 +112,9 @@ class StartScreen(QWidget):
         grid.setSpacing(tokens.SPACING[2])
         grid.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.cards: list[TemplateCard] = []
-        for i, spec in enumerate(TEMPLATES):
-            card = TemplateCard(*spec)
+        for i, spec in enumerate(templates()):  # flagship first, then toolboxes (TB-02)
+            glyph = spec.icon if (ICON_DIR / f"{spec.icon}.svg").is_file() else "box"
+            card = TemplateCard(spec.id, spec.title, spec.description, glyph)
             card.clicked.connect(self.template_chosen.emit)
             grid.addWidget(card, i // 2, i % 2)
             self.cards.append(card)

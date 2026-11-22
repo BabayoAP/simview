@@ -37,6 +37,12 @@ rl = ["gymnasium>=1.0", "stable-baselines3>=2.3"]
 [project.scripts]
 simview = "simview.cli:main"
 
+# TB-01: SimView's own toolboxes use the same entry point group as third-party ones.
+[project.entry-points."simview.toolboxes"]
+robotics = "simview.toolboxes.builtin:robotics"
+aero = "simview.toolboxes.builtin:aero"
+vehicles = "simview.toolboxes.builtin:vehicles"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/simview"]
 

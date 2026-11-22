@@ -37,14 +37,6 @@ __all__ = [
 
 def __getattr__(name: str) -> object:
     # Toolboxes load on first use, so `import simview` stays fast and MuJoCo-free.
-    if name == "robotics":
-        import simview.toolboxes.robotics as robotics
-
-        return robotics
-    if name in ("aero", "vehicles"):
-        import importlib
-
-        return importlib.import_module(f"simview.toolboxes.{name}")
     if name == "sensors":
         import simview.sensors as sensors
 
@@ -65,4 +57,12 @@ def __getattr__(name: str) -> object:
         import simview.io as io
 
         return io
+    if not name.startswith("_"):
+        # Toolbox modules (TB-02): robotics, aero, vehicles, and any installed toolbox's.
+        from simview.toolboxes import registry
+
+        try:
+            return registry.module(name)
+        except KeyError:
+            pass
     raise AttributeError(f"module 'simview' has no attribute {name!r}")

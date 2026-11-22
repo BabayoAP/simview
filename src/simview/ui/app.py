@@ -12,7 +12,7 @@ from qtpy.QtWidgets import QApplication
 
 from simview.ui import theme
 from simview.ui.main_window import UNTITLED, MainWindow
-from simview.ui.start_screen import TEMPLATES, StartScreen, add_recent_project
+from simview.ui.start_screen import StartScreen, add_recent_project
 from simview.ui.theme import tokens
 from simview.ui.theme.tokens import ThemeName
 
@@ -48,9 +48,10 @@ class Controller:
         self.start.project_opened.connect(self.open_project)
 
     def open_template(self, template_id: str) -> None:
-        from simview.templates import scene_path
+        from simview.templates import scene_path, template
 
-        title = next(t[1] for t in TEMPLATES if t[0] == template_id)
+        spec = template(template_id)
+        title = spec.title if spec is not None else template_id
         window = self.open_window(f"template/{template_id}", title)
         path = scene_path(template_id)
         if path is not None:
@@ -82,6 +83,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("scene", nargs="?", type=Path, help="a scene.py file to open directly")
     args, qt_args = parser.parse_known_args(argv)
     settings = default_settings()
+    from simview.toolboxes.registry import discover
+
+    discover()  # TB-01: find installed toolboxes at startup
     chosen: ThemeName = args.theme or str(settings.value("theme", "dark"))  # type: ignore[assignment]
     app = create_app([sys.argv[0], *qt_args], chosen)
     controller = Controller(settings)

@@ -89,7 +89,10 @@ class BlockEditor(QWidget):
             key, tip, ic, slot, shortcut = entry
             act = QAction(icon(ic), tip, self)
             act.triggered.connect(lambda _c=False, f=slot: f())
-            if shortcut is not None:
+            if isinstance(shortcut, QKeySequence.StandardKey):
+                act.setShortcuts(shortcut)  # every platform binding (Redo: Ctrl+Shift+Z too)
+                act.setShortcutContext(ctx)
+            elif shortcut is not None:
                 act.setShortcut(QKeySequence(shortcut))  # type: ignore[arg-type]
                 act.setShortcutContext(ctx)
             self.addAction(act)
@@ -105,7 +108,7 @@ class BlockEditor(QWidget):
             ("select_all", QKeySequence.StandardKey.SelectAll, self.select_all),
         ):
             act = QAction(key, self)
-            act.setShortcut(QKeySequence(seq))
+            act.setShortcuts(seq)
             act.setShortcutContext(ctx)
             act.triggered.connect(lambda _c=False, f=slot: f())
             self.addAction(act)
