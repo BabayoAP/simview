@@ -916,3 +916,116 @@ are **simulated cameras and recorded image/depth datasets only**, with no new de
 and video files (VW-20, would need opencv) and depth from plain RGB (VW-21) are v1. The existing
 SN-02 camera already measures metric depth, so VW-01 reuses it rather than waiting for SN-04.
 
+**D-122 — Camera rigs and frame conventions (VW-01, M11 part A).** `sv.perception.CameraRig(cameras,
+rate=10, *, name="rig", pos, rpy, maxlen=64)` is a `Sensor` (attach with `ego.attach(rig)`, read as
+`ego.sensors.rig`); it holds SN-02 `Camera`s whose `pos`/`rpy` are in the rig's frame, samples them
+all at the rig's rate (each camera's own rate is ignored) and publishes one `Stream` per camera,
+named `<entity>.<camera>` (`rig.streams`, in camera order). Presets: `CameraRig.surround(n=8, *,
+width=160, height=120, rate=10, mount_height=1.4, max_range=60, name="rig")` = front_main (60°),
+front_narrow (35°), front_wide (120°) 1 m ahead; left_front/right_front (±75°, 90°), left_rear/
+right_rear (±135°, 90°), rear (180°, 90°), all 1.4 m up, no pitch; other n give an even ring.
+`CameraRig.drone(n=6, ...)` = front/left/back/right at 90° plus down and up (other n: an n-1 ring
+plus down). Conventions for every perception consumer: world frame, metres, Z up. A frame's `pose`
+is world-from-camera of the **OpenCV optical frame** (x right, y down, z forward;
+`SENSOR_FROM_OPTICAL` converts from SimView's sensor frame, x forward, y left, z up). `K` uses the
+OpenCV pixel convention (pixel (u, v)'s centre at (u, v), so cx = W/2 - 0.5); `camera_K(cam)`
+computes it (the SN-02 `Camera.intrinsics` property, cx = W/2, is unchanged). Depth is **float32
+z-depth** along the optical axis (the camera's range times the ray's cosine); inf, nan or 0 = none.
+`rig.camera_pose(name)` and `rig.intrinsics(name)` give a camera's pose and K.
+
+**D-123 — Streams (VW-02).** `Stream(name, maxlen=64)`: `push(item, t) -> seq`, `latest()`,
+`seq`, `t`, `items(after)`, `reader()`. A `Reader` (one per consumer) has `since_last()` (every
+item since its last read), `latest()` (newest; skipped items count), `dropped`, `pending`. Items
+are anything: camera streams carry `Frame(t, seq, source, K, pose, rgb, depth=None, ego=None)`
+(`ego` = the vehicle's 4x4 world pose); pipeline outputs carry their stage's result. Grid streams
+carry the **same live `OccupancyGrid` object** every step (use `grid.copy()` to keep a snapshot).
+Wiring (additive only): `scene.add_pipeline(p)` (rate checked like controllers, unique names),
+`scene.pipelines`, `sim.streams` (every rig and pipeline stream, built when the `Sim` starts),
+`ctx.streams` in controllers. Order inside a tick: controllers, integration, sensors sample (rigs
+publish frames), then the pipelines due at that tick; also once at start after the first sample.
+So a controller at tick k sees the grid fused from frames up to tick k, and nothing is lost.
+
+**D-124 — Pipelines (VW-04).** `Pipeline(stages, *, rate=None, inputs=None, name="perception",
+maxlen=64)`; `inputs` is a rig, a stream name, a `Stream`, or a list (None = every stream in the
+run except its own). A step runs only if new input arrived; stage 0 gets the list of new items
+ordered by input stream then sequence number; each later stage gets the previous output; None
+stops the chain. Each stage publishes `<name>.<output>`, where `output` is the stage's `output`
+attribute (`cloud`, `occupancy`, `bev`, `record`) or the callable's `__name__`; a stage's
+`reset()` is called when a run starts. `pipeline["occupancy"]` / `pipeline.outputs` give the
+streams, `pipeline.latest()` their newest items. Offline, `pipeline.run(dataset_or_frames,
+speed=None)` resets the stages and groups frames into the steps a run would have used (step k =
+frames with ceil(t·rate) = k; rate None = one step per distinct t; ties in dataset camera order),
+returning `{stream name: last item}`. A run exported with `Record` and replayed this way gives a
+byte-identical grid (tested).
+
+**D-125 — Back-projection (VW-05).** `BackProject(max_range=40, *, min_range=0, stride=2,
+ego_box=None) -> PointCloud(t, points (N,3) float64, colors (N,3) uint8, origins (C,3),
+origin_index (N,), ego)`. Range is the Euclidean distance from the camera. Strided pixels start at
+(0, 0). In a sim the ray caster already skips the rig's own body (SN-02); `ego_box=((xmin, ymin,
+zmin), (xmax, ymax, zmax))` in the vehicle frame also masks the vehicle in recorded data (needs
+frames with `ego`). Pixels with no depth are dropped (they don't clear free space).
+
+**D-126 — Occupancy grid (VW-06).** `OccupancyGrid(res=0.2, extent=60, *, height=(0, 4),
+center=(0, 0), rolling=False, floor=0.1, l_occ=0.85, l_free=-0.4, clamp=(-2, 3.5), decay=0)`.
+`extent` is the horizontal size (a number = square, or (x, y)); `height` the z range. Arrays:
+`logodds` (float32, (nx, ny, nz); [i, j, k] is the voxel with lower corner origin + (i, j, k)·res)
+and `seen` (bool). Per update each voxel changes at most once (OctoMap-style; a hit wins over a
+pass-through); free space is traced by sampling every ray at `res` spacing, all rays at once in
+NumPy (float32 voxel coordinates). Occupied = log-odds > 0, free < 0, unknown = 0. `floor`: hits
+below it are ground; they clear space but never occupy, so the ground doesn't block planners
+(None turns it off). `decay` scales values toward 0 each update and snaps |L| < 0.01 to 0.
+`rolling` re-centres on the cloud's ego pose (else the mean camera origin) in whole voxels,
+keeping the overlap. Queries: `occupied(points)`, `is_free(a, b)` (unknown counts as free),
+`nearest_obstacle(pos, within=inf) -> float` (to voxel centres; a 2-element pos measures
+horizontally over all heights), `closest_occupied(pos, within)`, `occupied_centers()`,
+`occupancy`, `probability`, `bounds`, `copy()`, plus `t`, `version` (update count) and `ego`.
+Benchmark (Windows dev box, i7-10700K): one 8-camera 160×120 rig frame casts in ~30 ms,
+back-projects (stride 2, ~18k points) in ~3 ms and fuses into a 60 m × 60 m × 4 m grid at 0.2 m in
+~50 ms; a box scene with that rig at 10 Hz runs headless at ~1.08× real time. R8 levers: `stride`
+(3 roughly halves fusion), rig size and rate.
+
+**D-127 — BEV map (VW-07).** `BevMap(z_band=(0.2, 2.5)) -> Bev(t, occupied (nx,ny) bool, known
+(nx,ny) bool, height (nx,ny) float32 = top of the highest occupied voxel in the band or nan, image
+(ny, nx, 3) uint8, origin (x, y), res, ego)`; `bev.pixel(x, y) -> (row, col)`. Arrays index like
+the grid ([i, j] = x, y); the image is the map seen from above, +x right, +y up (row 0 = largest
+y). Image values are data, not UI styling: unknown 128, free 255, occupied 96 (low) to 0 (tall),
+gray in all three channels; a UI may recolor from the arrays.
+
+**D-128 — Dataset format and PNG I/O (VW-03).** Folder: `cameras.json` + `<camera>/rgb/NNNNNN.png`
+(8-bit RGB) + `<camera>/depth/NNNNNN.npy` (float z-depth, metres) or `.png` (16-bit gray,
+millimetres, 0 = none). `cameras.json` = `{"format": "simview-dataset", "version": 1, "cameras":
+[{"name", "width", "height", "K" (3x3), "frames": [{"t", "seq"?, "pose" (4x4 world-from-optical),
+"rgb", "depth"?, "ego"? (4x4)}]}]}`, paths relative to the folder; K and pose follow D-122.
+Required fields, matrix shapes, rigid poses, non-decreasing times and file existence are checked
+on open (`DatasetError`, a `ValueError` naming the camera, frame and field); image sizes when a
+frame is read. `Dataset(path)`: `cameras`, `frames()` (time order, ties in camera order),
+`replay(speed=None)` (1.0 = recorded rate, 2.0 = twice as fast, None = as fast as possible; also
+pushes into `dataset.streams[camera]`), `len`, `duration`. Writing: `DatasetWriter(path,
+depth="npy"|"png16")` with `add(frame)`, `flush()`, `close()`; `write_dataset(path, frames)`; and
+the pipeline stage `Record(path, depth="npy")`, which exports a run's camera streams (images
+written as they arrive, cameras.json rewritten each step, so the folder is valid if the run
+stops). The camera name is the frame's source (e.g. `ego.front_main`). `npy` is the default
+because it keeps float32 depth exactly (byte-identical replay); `png16` is compact but rounds to
+1 mm. PNG I/O is a small NumPy + zlib codec (`simview.perception.png`: writes unfiltered RGB8 /
+Gray16; reads 8/16-bit gray, gray+alpha, RGB and RGBA with all five filters, no interlacing), so
+there is no imaging dependency (D-121; Pillow is only a transitive dependency and isn't used).
+
+**D-129 — Accuracy against ground truth (VW-10).** `evaluate(grid, scene, *, z_band=None,
+radius=None, pos=None, exclude=(), observed_only=True) -> Accuracy(iou, precision, recall,
+nearest_error, nearest_true, nearest_perceived, tp, fp, fn)`; `truth_grid(grid, scene, exclude)`
+gives the true voxels. Truth = voxels whose volume overlaps a MuJoCo geom (tested at the voxel
+centre against the shape grown by half a voxel, strictly, so a voxel that only touches a face
+doesn't count): boxes, spheres, capsules, cylinders, ellipsoids; meshes and other types by their
+bounding box; planes and height fields are ground and skipped; `exclude` drops entities' bodies
+(and their children), e.g. the ego proxy. Scores count only voxels the grid has observed (cameras
+can't see inside or behind solids), within `z_band` and within `radius` m (horizontal) of `pos`
+(default: the grid's ego position). Nearest distances are from `pos` to the nearest true /
+occupied voxel centre in the band. On the 4-box test scene a still 8-camera 160×120 surround rig
+reaches IoU 0.89 within 20 m at 0.2 m voxels (M11 target ≥ 0.7). Logging the metrics as run
+signals is left to the VW-09 logging work.
+
+**D-130 — `sv.perception` registration.** Perception is core (`src/simview/perception/`, PRD
+§8.4) but is reached as `sv.perception` through the built-in toolbox `perception`
+(`simview.toolboxes.builtin:perception`, in `registry.BUILTINS` and the pyproject entry points),
+which also registers `CameraRig` as a toolbox sensor (`sv.sensors.CameraRig`). `"perception"` is
+in `simview.__all__`, like the other built-in toolbox modules.

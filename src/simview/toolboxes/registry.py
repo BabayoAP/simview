@@ -180,6 +180,7 @@ BUILTINS: tuple[tuple[str, str], ...] = (
     ("robotics", "simview.toolboxes.builtin:robotics"),
     ("aero", "simview.toolboxes.builtin:aero"),
     ("vehicles", "simview.toolboxes.builtin:vehicles"),
+    ("perception", "simview.toolboxes.builtin:perception"),
 )
 _BUILTIN_MODULES = {name for name, _ in BUILTINS}
 

@@ -42,6 +42,7 @@ simview = "simview.cli:main"
 robotics = "simview.toolboxes.builtin:robotics"
 aero = "simview.toolboxes.builtin:aero"
 vehicles = "simview.toolboxes.builtin:vehicles"
+perception = "simview.toolboxes.builtin:perception"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/simview"]

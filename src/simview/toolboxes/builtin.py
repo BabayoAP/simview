@@ -21,3 +21,8 @@ def vehicles(tb: Toolbox) -> None:
     tb.add_module("vehicles", "simview.toolboxes.vehicles")
     tb.add_entity("simview.toolboxes.vehicles:KinematicBicycle")
     tb.add_entity("simview.toolboxes.vehicles:ScriptedNPC")
+
+
+def perception(tb: Toolbox) -> None:
+    tb.add_module("perception", "simview.perception")
+    tb.add_sensor("simview.perception.rig:CameraRig")

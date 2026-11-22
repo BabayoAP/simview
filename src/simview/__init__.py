@@ -26,6 +26,7 @@ __all__ = [
     "io",
     "make_env",
     "make_vec_env",
+    "perception",
     "rl",
     "robotics",
     "run",
