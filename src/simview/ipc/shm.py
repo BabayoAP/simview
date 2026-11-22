@@ -191,6 +191,9 @@ class FrameSlot:
     def __init__(self, capacity: int = 0, name: str | None = None, create: bool = False) -> None:
         size = _SLOT_HEAD + max(8, int(capacity)) if create else 0
         self.shm = shared_memory.SharedMemory(name=name, create=create, size=size)
+        if self.shm.size < _SLOT_HEAD:
+            self.shm.close()
+            raise ValueError(f"shared memory {name!r} is too small for a frame slot")
         self.ints = np.ndarray((SLOT_INTS,), dtype=np.int64, buffer=self.shm.buf)
         self.meta = np.ndarray((SLOT_META,), dtype=np.float64, buffer=self.shm.buf[SLOT_INTS * 8 :])
         if create:
@@ -242,9 +245,7 @@ class FrameSlot:
                 n = int(ints[2])
                 raw = bytes(self.shm.buf[_SLOT_HEAD : _SLOT_HEAD + n])
                 if int(self.ints[0]) == lock:
-                    shape = tuple(int(v) for v in ints[5 : 5 + int(ints[4])])
-                    data = np.frombuffer(raw, dtype=_DTYPES[int(ints[3])]).reshape(shape)
-                    return SlotFrame(int(ints[1]), data, meta)
+                    return _slot_frame(ints, meta, raw, self.capacity)
             if time.monotonic() > deadline:
                 return None
             time.sleep(0)
@@ -257,3 +258,16 @@ class FrameSlot:
                 self.shm.unlink()
             except FileNotFoundError:
                 pass
+
+
+def _slot_frame(ints: np.ndarray, meta: np.ndarray, raw: bytes, capacity: int) -> SlotFrame | None:
+    """A frame from a consistent header copy, or None if the header doesn't describe a frame
+    that fits the slot (a damaged or foreign segment): sizes are checked before reading (D-136)."""
+    n, code, ndim = int(ints[2]), int(ints[3]), int(ints[4])
+    if not (0 <= n <= capacity and 0 <= code < len(_DTYPES) and 0 <= ndim <= 3):
+        return None
+    shape = tuple(int(v) for v in ints[5 : 5 + ndim])
+    dtype = _DTYPES[code]
+    if any(d < 0 for d in shape) or int(np.prod(shape, dtype=np.int64)) * dtype.itemsize != n:
+        return None
+    return SlotFrame(int(ints[1]), np.frombuffer(raw, dtype=dtype).reshape(shape), meta)

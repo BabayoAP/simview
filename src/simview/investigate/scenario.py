@@ -145,8 +145,8 @@ def _evaluate(node: ast.AST, run: RunData, quoted: dict[str, str]) -> Any:
         name = _dotted(node)
         assert name is not None
         return run[quoted.get(name, name)]
-    if isinstance(node, ast.Constant):
-        return node.value
+    if isinstance(node, ast.Constant):  # float, so `9**9**9**9` can't spin on big ints (D-136)
+        return np.float64(node.value)
     if isinstance(node, ast.Call):
         assert isinstance(node.func, ast.Name)
         return FUNCTIONS[node.func.id](*[ev(a) for a in node.args])

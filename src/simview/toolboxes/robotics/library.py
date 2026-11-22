@@ -117,6 +117,8 @@ def fetch(name: str) -> Path:
             continue
         seen.add(rel)
         dest = base / rel
+        if Path(rel).is_absolute() or not dest.resolve().is_relative_to(base.resolve()):
+            raise FetchError(f"{name}: refusing file {rel!r} outside {base} (D-136)")
         if not dest.exists():
             _download(f"{entry.folder}/{rel}", dest)
         if dest.suffix == ".xml":

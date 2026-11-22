@@ -13,3 +13,5 @@ htmlcov/
 runs/
 .simview-cache/
 MUJOCO_LOG.TXT
+.env
+*.pem

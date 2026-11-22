@@ -77,6 +77,15 @@ def _matrix(value: Any, shape: tuple[int, int], where: str) -> np.ndarray:  # no
     return m
 
 
+def _inside(root: Path, rel: str) -> bool:
+    """Whether `rel` names a path inside `root` (no absolute paths, no `..` out of it,
+    symlinks resolved): a dataset's files must stay in its folder (D-136)."""
+    if Path(rel).is_absolute() or Path(rel).drive:
+        return False
+    base = root.resolve()
+    return (base / rel).resolve().is_relative_to(base)
+
+
 def _is_int(value: Any) -> bool:  # noqa: ANN401
     return isinstance(value, int) and not isinstance(value, bool)
 
@@ -168,6 +177,8 @@ class Dataset:
                 rel = f.get(key)
                 if rel is None and key == "depth":
                     continue
+                if isinstance(rel, str) and not _inside(self.path, rel):
+                    raise DatasetError(f"{fw}.{key}: {rel!r} is outside the dataset folder")
                 if not isinstance(rel, str) or not (self.path / rel).is_file():
                     raise DatasetError(f"{fw}.{key}: file {rel!r} not found in {self.path}")
                 if key == "depth" and Path(rel).suffix.lower() not in (".png", ".npy"):
@@ -281,7 +292,8 @@ class DatasetWriter:
     def add(self, frame: Frame) -> None:
         name = frame.source
         if name not in self._cams:
-            if not name or "/" in name or "\\" in name or name in (".", ".."):
+            bad = not name or any(c in name for c in "/\\:") or name in (".", "..")
+            if bad:
                 raise ValueError(f"camera name {name!r} can't be a folder name")
             self._cams[name] = {
                 "name": name,

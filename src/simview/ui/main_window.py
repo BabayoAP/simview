@@ -1243,6 +1243,9 @@ class MainWindow(QMainWindow):
             )
             return
         scene = Path(run.scene)
+        if not self._scene_trusted(scene) and not self.confirm_run_scene(scene):
+            self.statusBar().showMessage(f"Didn't open {run.name}.", 4000)
+            return
         self._pending_run = run
         same = self.scene_path is not None and self.scene_path.resolve() == scene.resolve()
         if same and self.client is not None and self.client.alive and self.history is not None:
@@ -1252,6 +1255,33 @@ class MainWindow(QMainWindow):
         else:
             self.load_scene(scene)
         self.statusBar().showMessage(f"Opening {run.name}…")
+
+    def _scene_trusted(self, scene: Path) -> bool:
+        """D-136: a run log is data, but replaying it runs the scene file its metadata names.
+        That runs without asking only if it is the open scene, in the open project, or one of
+        SimView's own templates; any other scene file is confirmed first."""
+        import simview
+
+        target = scene.resolve()
+        roots = [Path(simview.__file__).resolve().parent]
+        if self.project is not None:
+            roots.append(Path(self.project.path).resolve())
+        if self.scene_path is not None and self.scene_path.resolve() == target:
+            return True
+        return any(target.is_relative_to(r) for r in roots)
+
+    def confirm_run_scene(self, scene: Path) -> bool:
+        from qtpy.QtWidgets import QMessageBox
+
+        answer = QMessageBox.question(
+            self,
+            "Run Scene Code?",
+            f"Replaying this run loads its scene file:\n\n{scene}\n\nScene files are Python code "
+            "and run with your permissions. Open it only if you trust where the run came from.",
+            QMessageBox.StandardButton.Open | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return answer == QMessageBox.StandardButton.Open
 
     def _on_replayed(self, ev: dict[str, Any]) -> None:
         layout = self.client.row_layout

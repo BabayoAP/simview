@@ -1165,3 +1165,24 @@ not finite or goes back, so the writer can't produce a folder `Dataset` rejects.
 meshes:** the search window around a mesh's bounding box uses the box's own radius (the geom's
 `rbound` is about its origin, not the box centre). **UI:** a damaged perception side file no
 longer stops a saved run from opening; the status bar says the snapshots weren't loaded.
+
+**D-136 — Security review: trust boundaries and hardening.** Scene files, editor scripts,
+toolboxes, projects (they load a scene), and block diagrams with Python Function blocks (the
+editor runs or imports the function a block names to read its ports) are code and run with the
+user's permissions by design; `SECURITY.md` says so. Data is never executed. **IPC:** the
+UI's ZeroMQ PAIR socket stays on 127.0.0.1 at a random port; messages are still pickled (numpy
+arrays, dataclasses), but every message is signed with HMAC-SHA256 under a 32-byte random key
+made per sim process and passed to it through `multiprocessing` (not its command line), and a
+message without a valid signature is dropped before it is unpickled (`protocol.send/recv`
+replace `send_pyobj/recv_pyobj`). Another local process can still take the port first and
+stop the session starting (denial of service only). **Shared memory:** `FrameSlot.read()`
+returns None for a header whose size, dtype code, rank, or shape doesn't fit the slot; a segment
+smaller than the header is refused. **Paths:** `cameras.json` frame files and a project's
+`scene`/`script`/`diagram` must be relative paths that resolve inside their folder (absolute
+paths and `..` escapes are refused, as `DatasetError`/`ProjectError`); `DatasetWriter` camera
+names can't contain `:`; a Menagerie MJCF that references a file outside the robot's folder
+is refused. **Replaying a run** loads the scene file its metadata names: the app asks first
+unless that scene is the open one, inside the open project, or inside the SimView package
+(templates). **Scenarios:** numeric constants evaluate as float64, so `9**9**9**9` can't hang on
+Python big integers. Already safe, kept: `np.load(allow_pickle=False)`, no `eval`/`exec`/YAML/
+`shell=True`, the in-process IPython kernel (no sockets), HTML reports escape every name.

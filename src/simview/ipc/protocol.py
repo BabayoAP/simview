@@ -1,19 +1,55 @@
 """Messages between the UI and the sim process (SE-02), and the scene description.
 
-Commands (UI -> sim) and events (sim -> UI) are small dicts sent with ZeroMQ `send_pyobj`
-(both ends are this program, on this machine). The scene description is plain data built once
-in the sim process, so the viewport can draw the scene without importing MuJoCo.
+Commands (UI -> sim) and events (sim -> UI) are small pickled dicts (both ends are this
+program, on this machine). The socket listens on 127.0.0.1 only, and every message is signed
+with HMAC-SHA256 under a random per-session key that the UI hands the sim process through
+`multiprocessing` (not the command line): a message without a valid signature is dropped
+before it is unpickled, so another local process that connects to the port can't make either
+side run code (D-136). The scene description is plain data built once in the sim process, so
+the viewport can draw the scene without importing MuJoCo.
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import pickle
+import secrets
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 if TYPE_CHECKING:
+    import zmq
+
     from simview.core.scene import Scene
+
+KEY_BYTES = 32
+
+
+def new_key() -> bytes:
+    """A random per-session key for signing messages (D-136)."""
+    return secrets.token_bytes(KEY_BYTES)
+
+
+def _sign(key: bytes, data: bytes) -> bytes:
+    return hmac.new(key, data, hashlib.sha256).digest()
+
+
+def send(sock: zmq.Socket, key: bytes, msg: Any) -> None:  # noqa: ANN401 - any message
+    """Send one message as two frames: its HMAC-SHA256 signature, then the pickled message."""
+    data = pickle.dumps(msg, protocol=pickle.HIGHEST_PROTOCOL)
+    sock.send_multipart([_sign(key, data), data])
+
+
+def recv(sock: zmq.Socket, key: bytes) -> Any | None:  # noqa: ANN401 - any message
+    """Receive one message; None if it isn't signed with `key` (it is never unpickled)."""
+    frames = sock.recv_multipart()
+    if len(frames) != 2 or not hmac.compare_digest(frames[0], _sign(key, frames[1])):
+        return None
+    return pickle.loads(frames[1])  # noqa: S301 - authenticated by the HMAC above
+
 
 # Commands, UI -> sim: {"cmd": name, ...}
 PLAY, PAUSE, STEP, RESET, SPEED, TARGET, BODY_POSE, QUIT = (
