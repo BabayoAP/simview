@@ -37,6 +37,7 @@ from simview.ui.console.handle import SimHandle
 from simview.ui.console.kernel import ConsoleWidget
 from simview.ui.console.workspace import ArrayViewer, WorkspaceBrowser
 from simview.ui.panels import EmptyState
+from simview.ui.perception_panels import BevPanel, CamerasPanel, PerceptionHistory
 from simview.ui.plots.panel import PlotPanel
 from simview.ui.plots.signals import SignalTree
 from simview.ui.runs_panel import RunsPanel
@@ -71,9 +72,18 @@ DOCKS: tuple[tuple[str, str, Qt.DockWidgetArea], ...] = (
     ("console", "Console / Editor", Qt.DockWidgetArea.BottomDockWidgetArea),
     ("runs", "Runs", Qt.DockWidgetArea.BottomDockWidgetArea),
     ("training", "Training", Qt.DockWidgetArea.BottomDockWidgetArea),
+    ("cameras", "Cameras", Qt.DockWidgetArea.BottomDockWidgetArea),
+    ("bev", "BEV Map", Qt.DockWidgetArea.BottomDockWidgetArea),
 )
-# 2: M5 panels, dropping layouts with the M4 viewport bug; 3: Runs (M5b); 4: Training (M9)
-LAYOUT_VERSION = 4
+# 2: M5 panels, dropping layouts with the M4 viewport bug; 3: Runs (M5b); 4: Training (M9);
+# 5: Cameras and BEV Map (M11)
+LAYOUT_VERSION = 5
+# VW-08: what the 3D view shows of the perceived world vs the scene's true geometry (D-134)
+GEOMETRY_ACTIONS = (
+    ("both", "Show Perceived and True Geometry"),
+    ("perceived", "Show Perceived Geometry Only (Voxels)"),
+    ("true", "Show True Geometry Only"),
+)
 CENTRAL_PAGES = ("3D View", "Diagram")  # BD-01: the block editor sits next to the 3D view
 COMPARE_ATOL, COMPARE_RTOL = 1e-6, 1e-6  # run comparison tolerance in the app (D-059)
 RUNS_ENV = "SIMVIEW_RUNS"  # overrides the run folder (default: `runs/` next to the scene file)
@@ -137,6 +147,12 @@ class MainWindow(QMainWindow):
         self._shown: tuple | None = None
         self._last_tick_at = 0.0
         self._plots_at = 0.0
+        # VW-08 / VW-09: perception views (D-134)
+        self.geometry_mode = "both"
+        self.perception_history = PerceptionHistory()  # the live session's logged rows
+        self.saved_snapshots: Any = None  # Snapshots of an opened saved run
+        self._perc_key: Any = None  # what the perception views show ("live" or a time)
+        self._perc_seqs: dict[str, int] = {}  # live stream -> shown frame sequence number
         self.timer = QTimer(self)
         self.timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.timer.timeout.connect(self._tick)
@@ -183,8 +199,33 @@ class MainWindow(QMainWindow):
         reg("view.diagram", "Show Diagram", lambda: self.show_central(1), "Ctrl+2", "View")
         reg("view.theme", "Toggle Light/Dark Theme", self.toggle_theme, None, "View")
         reg("view.reset_layout", "Reset Layout", self.reset_layout, None, "View")
+        for mode, title in GEOMETRY_ACTIONS:
+            reg(f"view.geometry.{mode}", title, self._geometry(mode), None, "View")
+        reg(
+            "view.geometry.cycle",
+            "Cycle Perceived / True Geometry",
+            self.cycle_geometry_mode,
+            None,
+            "View",
+        )
         for name, title, _ in DOCKS:
             reg(f"view.focus.{name}", f"Show {title}", self._focus_dock(name), None, "Panels")
+
+    def _geometry(self, mode: str) -> Callable[[], None]:
+        return lambda: self.set_geometry_mode(mode)
+
+    def set_geometry_mode(self, mode: str) -> None:
+        """VW-08: show perceived voxels, the true scene geometry, or both."""
+        self.geometry_mode = mode
+        if self.sim_view is not None:
+            self.sim_view.set_geometry_mode(mode)
+            self.sim_view.render()
+        title = dict(GEOMETRY_ACTIONS)[mode]
+        self.statusBar().showMessage(title.replace("Show ", "Showing "), 3000)
+
+    def cycle_geometry_mode(self) -> None:
+        modes = [m for m, _ in GEOMETRY_ACTIONS]
+        self.set_geometry_mode(modes[(modes.index(self.geometry_mode) + 1) % len(modes)])
 
     def _focus_dock(self, name: str) -> Callable[[], None]:
         def go() -> None:
@@ -377,6 +418,12 @@ class MainWindow(QMainWindow):
                 a("file.open_scene").trigger,
             ),
         }
+        if name == "cameras":
+            self.cameras_panel = CamerasPanel(self.show_start_screen.emit)
+            return self.cameras_panel
+        if name == "bev":
+            self.bev_panel = BevPanel(self.show_start_screen.emit)
+            return self.bev_panel
         if name == "training":
             return QWidget()  # replaced by the Training panel right after the docks are built
         if name == "timeline":
@@ -431,6 +478,8 @@ class MainWindow(QMainWindow):
         self.splitDockWidget(d["plots"], d["console"], Qt.Orientation.Horizontal)
         self.tabifyDockWidget(d["console"], d["runs"])
         self.tabifyDockWidget(d["runs"], d["training"])
+        self.tabifyDockWidget(d["training"], d["cameras"])
+        self.tabifyDockWidget(d["cameras"], d["bev"])
         d["console"].raise_()
 
     def _apply_default_sizes(self) -> None:
@@ -531,6 +580,7 @@ class MainWindow(QMainWindow):
         if self.sim_view is not None:
             return
         self.sim_view = self._make_viewport()
+        self.sim_view.set_geometry_mode(self.geometry_mode)
         self.sim_view.setObjectName("CentralArea")
         self.central.addWidget(self.sim_view)
         self.central.setCurrentWidget(self.sim_view)
@@ -621,6 +671,8 @@ class MainWindow(QMainWindow):
                 self._live_draws = ev["draws"]  # the newest set (draws can change every tick)
                 if self.history is not None:
                     self.history.add_draws(ev["tick"], ev["draws"])
+            elif kind == proto.SNAPSHOTS:  # VW-09: the live session's perception history
+                self.perception_history.add(ev["pipeline"], ev["snapshots"], ev["frames"])
             elif kind == proto.PARAMS:
                 self.sim_handle.params_changed(ev["values"])
             elif kind == proto.LOG:
@@ -638,6 +690,7 @@ class MainWindow(QMainWindow):
         now = time.monotonic()
         wall_dt, self._last_tick_at = now - self._last_tick_at, now
         self.playback.advance(min(wall_dt, 0.1), float(self.speed_box.currentData()))
+        client.perception.read()  # VW-08: only the newest frame of each stream (§8.5)
         frame = client.frame()
         if frame is not None:
             self._live_frame = frame
@@ -667,6 +720,8 @@ class MainWindow(QMainWindow):
         if shown is not None and row >= 0:
             assert h is not None
             draws = h.draws_at(int(h.ticks[row]))
+        if self._show_perception(shown, row):
+            self._shown = None  # the voxels changed: render
         key = (moment, h.version if h is not None else 0, id(draws))
         if moment is not None and key != self._shown:
             self._shown = key
@@ -691,6 +746,84 @@ class MainWindow(QMainWindow):
                 playing=pb.running,
             )
 
+    # ----- perception views (VW-08, VW-09, D-134) -------------------------------------
+    def _perception_pipeline(self) -> str | None:
+        """The pipeline the views show: the scene's first (or the saved run's only) one."""
+        desc = self.client.description if self.client is not None else None
+        if desc is not None and desc.pipelines:
+            return next(iter(desc.pipelines))
+        return None if self.saved_snapshots is None else self.saved_snapshots.pipeline
+
+    def _show_perception(self, shown: int | None, row: int) -> bool:
+        """Show the perceived world at the timeline's moment: the newest live frames, or the
+        logged snapshot at the shown time (the live session's history or a saved run's
+        files). Returns whether the voxels changed (the 3D view needs a render)."""
+        client, h = self.client, self.history
+        if client is None or client.description is None or self.sim_view is None:
+            return False
+        if shown is None or row < 0 or h is None:
+            return self._show_live_perception()
+        pipe = self._perception_pipeline()
+        snaps = self.saved_snapshots
+        if not self.playback.recorded:
+            snaps = self.perception_history.get(pipe) if pipe is not None else None
+        t = h.time_of(row)
+        key = ("log", id(snaps), len(snaps) if snaps is not None else 0, t)
+        if key == self._perc_key:
+            return False
+        self._perc_key = key
+        snap = snaps.at(t) if snaps is not None else None
+        if snap is None:
+            self.sim_view.set_voxels(None)
+        else:
+            self.sim_view.set_voxels(snap.centers, snap.res)
+        if snap is not None and snap.bev is not None:
+            self.bev_panel.show_bev(
+                snap.bev, snap.bev_origin, float(snap.bev_res or 0.0), snap.ego, snap.t
+            )
+        else:
+            self.bev_panel.show_bev(None, hint="No map logged at this time.")
+        for name in client.description.cameras:
+            frame = snaps.camera_at(name, t) if snaps is not None else None
+            rgb = None if frame is None else frame.rgb
+            self.cameras_panel.show_frame(name, rgb, CamerasPanel.NOT_LOGGED)
+        return True
+
+    def _show_live_perception(self) -> bool:
+        from simview.ipc import protocol as proto
+
+        assert self.client is not None
+        changed = False
+        if self._perc_key != "live":  # back from a logged moment: start from the newest
+            self._perc_key, self._perc_seqs = "live", {}
+            self.sim_view.set_voxels(None)
+            self.bev_panel.show_bev(None)
+            for name in self.cameras_panel.thumbs:
+                self.cameras_panel.show_frame(name, None, CamerasPanel.NO_FRAME)
+            changed = True
+        pipe = self._perception_pipeline()
+        for stream, f in self.client.perception.latest.items():
+            if self._perc_seqs.get(stream) == f.seq:
+                continue
+            self._perc_seqs[stream] = f.seq
+            if f.kind == proto.VOXELS and stream == f"{pipe}.{proto.VOXELS}":
+                self.sim_view.set_voxels(f.data, f.res)
+                changed = True
+            elif f.kind == proto.BEV and stream == f"{pipe}.{proto.BEV}":
+                self.bev_panel.show_bev(f.data, f.origin, f.res, f.ego, f.t)
+            elif f.kind == proto.CAMERA:
+                self.cameras_panel.show_frame(stream, f.data)
+        return changed
+
+    def _reset_perception(self, desc: Any) -> None:
+        self.perception_history.clear()
+        self.saved_snapshots = None
+        self._perc_key, self._perc_seqs = None, {}
+        self.cameras_panel.set_cameras(list(desc.cameras))
+        self.bev_panel.set_available(bool(desc.pipelines))
+        if self.sim_view is not None:
+            self.sim_view.set_voxels(None)
+
     def _trail_seconds(self) -> dict[str, float]:
         desc = self.client.description if self.client is not None else None
         if desc is None:
@@ -710,6 +843,7 @@ class MainWindow(QMainWindow):
         self.history = History(layout, desc.dt) if layout is not None else None
         self.playback.reset(self.history)
         self._live_draws, self._drawn, self._shown = [], None, None
+        self._reset_perception(desc)
         if layout is not None:
             assert self.signal_tree is not None and self.plots is not None
             self.signal_tree.load(layout)
@@ -1091,6 +1225,7 @@ class MainWindow(QMainWindow):
             },
         }
         write_table(h.table(meta), path)
+        self.perception_history.write(path)  # VW-09: `<run>.perception/` beside the log
         scene_file = str(self.scene_path.resolve()) if self.scene_path is not None else None
         write_context(path, scene_file=scene_file)
         self.history = None  # saved once
@@ -1134,12 +1269,25 @@ class MainWindow(QMainWindow):
         self.signal_tree.load(layout)
         self.plots.set_history(self.history)
         self.opened_run = read_info(ev["path"])
+        self._load_saved_snapshots(ev["path"])
         self.setWindowTitle(f"SimView — {self.scene_path.name} — {self.opened_run.name}")
         self.statusBar().showMessage(f"{self.opened_run.name}: {self.history.n} samples.", 4000)
         if self._pending_finding is not None:
             f, self._pending_finding = self._pending_finding, None
             self.show_finding(f)
         self.show_time()
+
+    def _load_saved_snapshots(self, path: str) -> None:
+        """VW-09: a saved run's perception snapshots, for scrubbing (None if it has none)."""
+        from simview.perception.runlog import load_snapshots, snapshot_pipelines
+
+        names = snapshot_pipelines(path)
+        desc = self.client.description if self.client is not None else None
+        want = next(iter(desc.pipelines), None) if desc is not None else None
+        self.saved_snapshots = None
+        if names:
+            self.saved_snapshots = load_snapshots(path, want if want in names else names[0])
+        self._perc_key = None
 
     def show_finding(self, finding: Any) -> None:
         """RI-03: move the timeline, viewport, and plots to a finding's window (opening its

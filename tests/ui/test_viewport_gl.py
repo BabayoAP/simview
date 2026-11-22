@@ -239,6 +239,47 @@ def test_200k_point_cloud_renders_at_30_fps(scene_view):
     assert np.median(times) < budget, f"median frame {np.median(times) * 1e3:.1f} ms"
 
 
+def test_voxels_render_and_toggle_perceived_vs_true(scene_view):
+    """VW-08: occupied voxels drawn as cubes colored by height; perceived / true / both."""
+    vp, _ = scene_view
+    blank = vp.plotter.screenshot(return_img=True)
+    vp.set_geometry_mode("perceived")
+    assert not any(a.GetVisibility() for a in vp.geom_actors)
+    centers = np.stack(np.meshgrid(np.arange(10), np.arange(10), [0.1]), -1).reshape(-1, 3) * 0.1
+    vp.set_voxels(centers, 0.1)
+    vp.frame_all()
+    vp.render()
+    assert vp.voxel_actor.GetVisibility() and vp.voxel_count == 100
+    assert np.abs(vp.plotter.screenshot(return_img=True).astype(int) - blank).sum() > 0
+    vp.set_geometry_mode("true")
+    assert not vp.voxel_actor.GetVisibility() and all(a.GetVisibility() for a in vp.geom_actors)
+    vp.set_geometry_mode("both")
+    assert vp.voxel_actor.GetVisibility()
+    vp.set_voxels(None)
+    assert not vp.voxel_actor.GetVisibility()
+
+
+def test_50k_voxels_render_at_30_fps(scene_view):
+    """VW-08: 50k occupied voxels, replaced in place and drawn every frame, at >= 30 FPS."""
+    vp, _ = scene_view
+    rng = np.random.default_rng(2)
+    grids = [
+        (rng.integers(0, 150, size=(50_000, 3)) * [0.2, 0.2, 0.02]).astype(np.float32)
+        for _ in range(3)
+    ]
+    vp.set_voxels(grids[0], 0.2)
+    vp.frame_all()
+    vp.render()  # warm up
+    times = []
+    for i in range(30):
+        start = time.perf_counter()
+        vp.set_voxels(grids[i % 3], 0.2)
+        vp.render()
+        times.append(time.perf_counter() - start)
+    budget = 1 / 30 if not os.environ.get("CI") else 0.15  # software GL on CI runners
+    assert np.median(times) < budget, f"median frame {np.median(times) * 1e3:.1f} ms"
+
+
 def test_targets_get_a_gizmo_and_report_moves(qapp):
     """VP-10: an IK target has an always-visible gizmo; its moves are emitted."""
     from simview.ui.viewport.view import Viewport

@@ -206,9 +206,25 @@ class NoViewport(QWidget):
         self.selection: str | None = None
         self.draws: list[tuple] = []
         self.trails: dict[str, np.ndarray] | None = None
+        self.voxels: np.ndarray | None = None  # VW-08: the voxel centres it would draw
+        self.voxel_res = 0.0
+        self.geometry_mode = "both"
 
     def load(self, desc: Description) -> None:
         self.desc = desc
+
+    def set_voxels(self, centers: np.ndarray | None, res: float = 0.0) -> None:
+        self.voxels = None if centers is None or len(centers) == 0 else centers
+        self.voxel_res = res
+
+    @property
+    def voxel_count(self) -> int:
+        return 0 if self.voxels is None else len(self.voxels)
+
+    def set_geometry_mode(self, mode: str) -> None:
+        if mode not in ("both", "perceived", "true"):
+            raise ValueError(f"unknown geometry mode {mode!r}")
+        self.geometry_mode = mode
 
     def update_frame(self, frame: Frame, trails: dict[str, np.ndarray] | None = None) -> None:
         self.frame = frame

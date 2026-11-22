@@ -18,6 +18,7 @@ import numpy as np
 import zmq
 
 from simview.ipc import protocol as proto
+from simview.ipc.perception import PerceptionOut
 from simview.ipc.record import RowLayout, record_row, replay_rows, row_layout
 from simview.ipc.shm import Layout, StateBuffer
 
@@ -64,6 +65,7 @@ class Server:
         self._pace_wall = 0.0
         self._pace_sim = 0.0
         self._last_draws: list[tuple] | None = None
+        self.perception: PerceptionOut | None = None  # VW-08: perception frames out (D-134)
         self.row_layout: RowLayout | None = None
         self._rows: list[np.ndarray] = []  # recorded since the last publish
         self._rtf_samples: list[tuple[float, float]] = []  # (wall, sim t) over RTF_WINDOW
@@ -84,6 +86,9 @@ class Server:
             self.error()
             return False
         self.scene, self.sim = scene, sim
+        if self.perception is not None:
+            self.perception.close()
+        self.perception = PerceptionOut(sim)
         markers = [e.name for e in desc.entities if e.has_marker]
         n_bodies = scene.world.model.nbody if scene.world is not None else 0
         layout = Layout.build(
@@ -171,6 +176,9 @@ class Server:
         if not proto.same_draws(self._last_draws, draws):
             self._last_draws = draws
             self.sock.send_pyobj({"event": proto.DRAWS, "draws": draws, "tick": sim.tick})
+        if self.perception is not None and self.perception.active:
+            for ev in self.perception.events():
+                self.sock.send_pyobj(ev)
 
     # -- commands -------------------------------------------------------------------------------
     def handle(self, msg: dict[str, Any]) -> bool:
@@ -277,6 +285,8 @@ class Server:
             self.publish()
         if self.buffer is not None:
             self.buffer.close(unlink=True)
+        if self.perception is not None:
+            self.perception.close()
         self.sock.send_pyobj({"event": proto.STOPPED})
         self.sock.close(linger=500)
         self.ctx.term()

@@ -17,6 +17,7 @@ from typing import Any
 import zmq
 
 from simview.ipc import protocol as proto
+from simview.ipc.perception import PerceptionIn
 from simview.ipc.record import RowLayout
 from simview.ipc.server import serve
 from simview.ipc.shm import Frame, Layout, StateBuffer
@@ -33,6 +34,7 @@ class SimClient:
         self.row_layout: RowLayout | None = None  # history row columns (VP-05, DA-01)
         self.scene_path: Path | None = None
         self._dead_reported = False
+        self.perception = PerceptionIn()  # VW-08: newest perception frames (D-134)
 
     # -- lifecycle --------------------------------------------------------------------------
     def start(self, scene_path: str | Path) -> None:
@@ -68,6 +70,7 @@ class SimClient:
             self.sock = None
 
     def _release(self) -> None:
+        self.perception.clear()
         if self.buffer is not None:
             self.buffer.close()
             self.buffer = None
@@ -119,6 +122,8 @@ class SimClient:
                 self.description = ev["description"]
                 self.row_layout = ev["rows"]
                 self.buffer = StateBuffer(ev["layout"], name=ev["shm"])
+            elif ev.get("event") == proto.FRAMES:
+                self.perception.on_event(ev)
             events.append(ev)
         if self.proc is not None and not self.proc.is_alive() and not self._dead_reported:
             self._dead_reported = True

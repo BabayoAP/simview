@@ -1099,3 +1099,45 @@ about 0.85; single early samples, with the car still and few views, are lower, ~
 at 10 m/s) are the trade-off: about half the rays, a slightly sparser grid. The 20-run sweep
 (parallel processes, ~75 s) is marked `slow` (new marker; runs by default, `-m "not slow"` skips
 it).
+
+**D-134 — Perception views and replay in the app (VW-08, VW-09 UI half, M11 part C).**
+**IPC (§8.5):** `simview.ipc.perception`. In the sim process `PerceptionOut` runs on every state
+publish (≤ 120 Hz wall): each pipeline's newest occupied voxel centres (float32 (N, 3)) and BEV
+image (gray (ny, nx) uint8; metadata t, origin, res, ego (x, y, yaw)), and each `CameraRig`
+camera's newest image (decimated by an integer stride to ≤ 320 px wide), are copied into that
+stream's own `FrameSlot` (new in `ipc/shm.py`: a seqlocked shared-memory block, header + 8 float64
+metadata + bytes; a frame that outgrows its slot gets a new slot 1.5× its size). One ZMQ event
+`{"event": "frames", "frames": [(stream, kind, shm name, seq), ...]}` names what changed. The UI's
+`PerceptionIn` (on `SimClient.perception`) only notes the events and reads each slot once per UI
+frame, so a slow UI skips to the newest frame. The pipelines' logged rows (D-131 snapshots and
+camera frames) go to the UI as `{"event": "snapshots", "pipeline", "snapshots", "frames"}` as they
+are logged: that is the live session's scrubbable history (cheap: 2 Hz by default). Pickled ZMQ
+was kept for these rows because they are small and must all arrive (a slot would drop them).
+`Description` gains `cameras` (camera stream names) and `pipelines` (name → ego entity).
+**Snapshot format:** D-131's table gains a nullable `ego` column (x, y, yaw of the grid's ego
+pose) for the BEV marker; `Snapshot.ego` defaults to None, so older logs still load.
+`runlog.write_rows` / `snapshot_table` / `camera_table` are shared by `PerceptionLog.write` and
+the app. **Viewport:** voxels are one `vtkGlyph3DMapper` (GPU-instanced cube of 0.92 × res per
+centre, "rgb" point colors from height over 0-3 m on viridis, `tokens.VIRIDIS`, 9 stops linearly
+interpolated); `set_voxels(centers, res)` swaps the mapper's input in place. Perceived vs true
+geometry is a view mode `both` / `perceived` (voxels; scene geoms, edges and visuals hidden;
+grid, markers and trails stay) / `true`, in the View menu and the command palette (three actions
+plus "Cycle Perceived / True Geometry"), not a heads-up toolbar button (the toolbar's buttons
+are two-state; a third state there was the less simple reading). **Panels:** new docks
+`cameras` ("Cameras": thumbnail grid, click to enlarge, click again or Back to return) and `bev`
+("BEV Map": the image scaled to fit, nearest-neighbour, ego as an `accent` arrow), tabbed after
+Training in the bottom-right group; `LAYOUT_VERSION` 5. Empty states: "This scene has no camera
+rig." / "This scene has no perception pipeline." with "Open Template…" (the start screen has the
+vision_drive card). Only the scene's first pipeline is shown (simplest reading; one pipeline per
+scene in every template). **Replay:** at the live end the views show the newest live frames;
+anywhere else on the timeline they show the snapshot at or before that time, from the in-memory
+history (live session) or `load_snapshots(run)` (an opened saved run). Cameras follow the
+timeline only from logged camera frames: with `camera_every` off (the default, also in
+vision_drive) the thumbnails show "No camera frame logged at this time" when scrubbing.
+`save_live_run` writes the session's rows with `write_rows` to `<run>.perception/`, so a
+reopened run shows the same snapshots. **Pending a real display:** `tests/ui/test_viewport_gl.py`
+`test_voxels_render_and_toggle_perceived_vs_true` and `test_50k_voxels_render_at_30_fps` (the
+VW-08 ≥ 30 FPS @ 50k criterion) are written but were not run (the dev box's screen was locked;
+run `QT_QPA_PLATFORM=windows SIMVIEW_GL=1 pytest -m gl tests/ui/test_viewport_gl.py`), plus a
+manual look at the vision_drive template: voxel colors, the BEV arrow's heading, thumbnail
+grid, light theme.

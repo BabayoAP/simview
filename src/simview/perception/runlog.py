@@ -57,6 +57,7 @@ SNAPSHOT_SCHEMA = pa.schema(
         ("bev_res", pa.float64()),
         ("bev_shape", pa.list_(pa.int32(), 2)),  # (ny, nx) of the gray image
         ("bev", pa.binary()),  # gray uint8 image, row 0 = largest y (D-127)
+        ("ego", pa.list_(pa.float64(), 3)),  # x, y, yaw of the grid's ego pose (D-134)
     ]
 )
 CAMERA_SCHEMA = pa.schema(
@@ -237,6 +238,7 @@ class PerceptionLog:
             "bev_res": None,
             "bev_shape": None,
             "bev": None,
+            "ego": None if grid.ego is None else ego_xyyaw(grid.ego),
         }
         bev = self.bev()
         if bev is not None:
@@ -251,28 +253,50 @@ class PerceptionLog:
 
     def write(self, run_path: str | PathLike[str]) -> list[Path]:
         """Write the side files for the run logged at `run_path`; returns the files written."""
-        written: list[Path] = []
-        if not self.snapshots and not self.frames:
-            return written
-        folder = perception_dir(run_path)
-        folder.mkdir(parents=True, exist_ok=True)
-        if self.snapshots:
-            table = pa.table(
-                {
-                    f.name: pa.array([r[f.name] for r in self.snapshots], type=f.type)
-                    for f in SNAPSHOT_SCHEMA
-                },
-                schema=SNAPSHOT_SCHEMA,
-            )
-            path = folder / f"{self.pipeline.name}.parquet"
-            pq.write_table(table, path)
-            written.append(path)
-        if self.frames:
-            table = pa.Table.from_pylist(self.frames, schema=CAMERA_SCHEMA)
-            path = folder / f"{self.pipeline.name}.cameras.parquet"
-            pq.write_table(table, path)
-            written.append(path)
+        return write_rows(run_path, self.pipeline.name, self.snapshots, self.frames)
+
+
+def ego_xyyaw(ego: np.ndarray) -> list[float]:
+    """(x, y, yaw) of a 4x4 world pose."""
+    e = np.asarray(ego, dtype=np.float64)
+    return [float(e[0, 3]), float(e[1, 3]), float(math.atan2(e[1, 0], e[0, 0]))]
+
+
+def snapshot_table(rows: list[dict[str, Any]]) -> pa.Table:
+    """Snapshot rows (as `PerceptionLog.snapshots` holds them) as a table."""
+    return pa.table(
+        {f.name: pa.array([r.get(f.name) for r in rows], type=f.type) for f in SNAPSHOT_SCHEMA},
+        schema=SNAPSHOT_SCHEMA,
+    )
+
+
+def camera_table(frames: list[dict[str, Any]]) -> pa.Table:
+    """Camera frame rows (as `PerceptionLog.frames` holds them) as a table."""
+    return pa.Table.from_pylist(frames, schema=CAMERA_SCHEMA)
+
+
+def write_rows(
+    run_path: str | PathLike[str],
+    pipeline: str,
+    snapshots: list[dict[str, Any]],
+    frames: list[dict[str, Any]],
+) -> list[Path]:
+    """Write one pipeline's snapshot and camera rows beside the run log at `run_path` (also
+    used by the app to save a live session's perception history, D-134)."""
+    written: list[Path] = []
+    if not snapshots and not frames:
         return written
+    folder = perception_dir(run_path)
+    folder.mkdir(parents=True, exist_ok=True)
+    if snapshots:
+        path = folder / f"{pipeline}.parquet"
+        pq.write_table(snapshot_table(snapshots), path)
+        written.append(path)
+    if frames:
+        path = folder / f"{pipeline}.cameras.parquet"
+        pq.write_table(camera_table(frames), path)
+        written.append(path)
+    return written
 
 
 def _advance(due: float, t: float, every: float) -> float:
@@ -306,6 +330,7 @@ class Snapshot:
     bev: np.ndarray | None  # (ny, nx, 3) uint8, or None if the pipeline has no BEV stage
     bev_origin: np.ndarray | None
     bev_res: float | None
+    ego: np.ndarray | None = None  # (x, y, yaw) of the ego pose; None in older logs (D-134)
 
     @property
     def centers(self) -> np.ndarray:
@@ -369,6 +394,7 @@ class Snapshots:
             gray = np.frombuffer(row["bev"], dtype=np.uint8).reshape(ny, nx)
             bev = np.repeat(gray[:, :, None], 3, axis=2)
             bev_origin = np.asarray(row["bev_origin"], dtype=np.float64)
+        ego = row.get("ego")
         return Snapshot(
             t=float(row["t"]),
             version=int(row["version"]),
@@ -379,6 +405,7 @@ class Snapshots:
             bev=bev,
             bev_origin=bev_origin,
             bev_res=row["bev_res"],
+            ego=None if ego is None else np.asarray(ego, dtype=np.float64),
         )
 
     @property

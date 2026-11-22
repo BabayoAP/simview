@@ -38,6 +38,14 @@ READY, ERROR, LOG, DRAWS, STOPPED = "ready", "error", "log", "draws", "stopped"
 # Per-tick history rows (VP-05, DA-01): {"event": ROWS, "rows": (n, width) float64 array}.
 # Rows replace any the UI holds from the first row's tick on (a re-recorded tick, or a reset).
 ROWS = "rows"
+# Perception (VW-08, VW-09, PRD §8.5, D-134), sim -> UI:
+# {"event": FRAMES, "frames": [(stream, kind, shm name, seq), ...]}: these streams have a new
+# latest frame in their shared-memory slot (kind "voxels", "bev" or "camera"; a slot that grew
+# gets a new shm name). The UI reads only the newest of each.
+# {"event": SNAPSHOTS, "pipeline": name, "snapshots": [row, ...], "frames": [row, ...]}: rows the
+# pipeline's PerceptionLog logged since the last event (D-131 rows), the live session's history.
+FRAMES, SNAPSHOTS = "frames", "snapshots"
+VOXELS, BEV, CAMERA = "voxels", "bev", "camera"
 
 # MuJoCo shows geom groups 0-2 by default; Menagerie puts collision-only geoms in group 3.
 VISIBLE_GROUPS = (0, 1, 2)
@@ -80,6 +88,8 @@ class Description:
     params: dict[str, Any] = field(default_factory=dict)  # SC-05: values when loaded
     diagrams: dict[str, str | None] = field(default_factory=dict)  # name -> .svd path (M7)
     scopes: dict[str, list[str]] = field(default_factory=dict)  # BD-08: scope -> signals
+    cameras: list[str] = field(default_factory=list)  # VW-08: camera stream names, rig order
+    pipelines: dict[str, str] = field(default_factory=dict)  # VW-08: pipeline -> ego entity
 
     def entity_of_body(self, body: int) -> str | None:
         for e in self.entities:
@@ -115,6 +125,8 @@ def describe(scene: Scene) -> Description:
             for k, d in scene.diagrams.items()
         },
         scopes={k: v for d in scene.diagrams.values() for k, v in d.scopes.items()},
+        cameras=[n for s in scene.sensors() for n in _camera_streams(s)],
+        pipelines={p.name: p.log.owner() for p in scene.pipelines if hasattr(p, "log")},
     )
     world = scene.world
     if world is not None:
@@ -164,6 +176,13 @@ def describe(scene: Scene) -> Description:
             EntityInfo(e.name, kind, tuple(e.state_names), bodies, e.position() is not None)
         )
     return desc
+
+
+def _camera_streams(sensor: Any) -> list[str]:  # noqa: ANN401 - any sensor
+    """Camera stream names of a sensor (a CameraRig has them; other sensors don't)."""
+    from simview.perception.rig import CameraRig
+
+    return list(sensor.streams) if isinstance(sensor, CameraRig) else []
 
 
 def draws_payload(draws: list[Any]) -> list[tuple]:
