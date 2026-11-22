@@ -905,3 +905,14 @@ cover the block editor; the inspector is read-only and the viewport has no persi
 yet, so there is nothing else to undo. The editor's standard shortcuts now bind every platform
 key (`setShortcuts`): before, Redo only got its first binding, which is Ctrl+Y on Windows, so
 §7.8's Ctrl+Shift+Z did nothing there.
+
+**D-121 — Vision world model (PRD 1.4, owner request 2026-11-22).** The owner asked for camera-based
+3D perception "similar to what Tesla has done", built on input/output streams. Read as: surround
+cameras → depth → a fused 3D occupancy grid and BEV map that controllers drive from (Tesla's
+occupancy-network idea, done geometrically rather than learned, since the simulator gives depth and
+poses; the learned version is VW-30). Streams run inside the scheduler tick so runs stay
+deterministic (§8.5). Owner's choices: the milestone is **M11, after M10** is finished; MVP inputs
+are **simulated cameras and recorded image/depth datasets only**, with no new dependency; webcam
+and video files (VW-20, would need opencv) and depth from plain RGB (VW-21) are v1. The existing
+SN-02 camera already measures metric depth, so VW-01 reuses it rather than waiting for SN-04.
+

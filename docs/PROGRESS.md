@@ -17,6 +17,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M8: Sensors + Aero/Vehicles toolboxes | ✅ Approved 2026-11-21 | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
 | M9: Monte Carlo + RL | ✅ Approved 2026-11-22 | `m9-monte-carlo-rl` | SE-08, SE-09, DA-05, DA-06, ML-01–ML-04 |
 | M10: Polish + hero demo | In progress | `m10-polish-demo` | NF-01–NF-09, TB-01, TB-02, DS-11 |
+| M11: Vision world model (PRD 1.4) | Planned, after M10 (D-121) | `m11-vision-world-model` | VW-01–VW-11 |
 
 ## M1: Skeleton + design system
 

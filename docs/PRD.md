@@ -1,6 +1,6 @@
 # SimView — Product Requirements Document
 
-**Version:** 1.3 · **Status:** Ready to build · **Owner:** Harrison
+**Version:** 1.4 · **Status:** Ready to build · **Owner:** Harrison
 
 **Changes in 1.1 (2026-11-18, approved by the owner):** added §5.10 Robotics depth (RB) and milestone
 **M3b: Robotics depth** before M4, which also finishes TB-ROBOT. Updated §8.3, §8.4, §9, §10, and §12.
@@ -16,6 +16,14 @@ SimView's own run logs, with milestone **M5b: Run investigation** after M5 (see 
 drone interception, and it stays the hero demo. The Aerospace toolbox keeps the quadrotor, EKF and UKF,
 and adds flight control, route following, and a wind model in place of the interceptor and guidance
 laws. Updated G1, UC-2, NF-03, §8 (template folder), §9, §10 (hero demo, M8). See DECISIONS D-099.
+
+**Changes in 1.4 (2026-11-22, requested by the owner):** added camera-based 3D perception in the
+style of Tesla's vision stack (surround cameras → a 3D occupancy "vector space" the car drives
+from). New use case UC-6 (vision-only driving), new §5.12 Vision world model (VW) built on typed
+input/output frame streams, §8.5 (perception streams in the architecture), the Perception toolbox's
+occupancy part moved up to MVP in §9, and milestone **M11: Vision world model** after M10. MVP
+inputs are simulated cameras and recorded image/depth datasets, with no new dependencies; webcam,
+video files and depth from plain RGB are v1. See DECISIONS D-121.
 
 ---
 
@@ -157,6 +165,30 @@ SimView is a desktop application for **building, running, and visualizing simula
 4. A panel shows the policy's action distribution per tick, as bars over the discrete actions or a Gaussian for continuous ones.
 
 **Features used:** ML-05–ML-07, VP-11, SN-02.
+
+### UC-6: Vision-only driving (camera world model)
+**Story:** As Maya, I want my car to see the world only through cameras, build a 3D model of its
+surroundings from them, and drive from that model, so I can test a camera-only stack before it
+goes near real hardware, and measure how far its perceived world is from the truth.
+
+**Workflow:**
+1. Load template `Vision Drive`. The ego vehicle carries an 8-camera surround rig (RGB + depth) and
+   no lidar; the road has parked cars, a pedestrian-sized box, and a stalled NPC in the lane.
+2. Each camera is an input stream of timestamped frames. A perception pipeline back-projects every
+   depth frame into world points and fuses them into a 3D voxel occupancy grid and a bird's-eye-view
+   (BEV) map: the output streams.
+3. The planner reads only the occupancy grid (`ctx.streams["ego.occupancy"]`), never the scene's
+   true geometry, and slows, stops, or steers around what it sees.
+4. Run. The viewport shows the perceived voxels over the true scene (toggle either), a camera panel
+   shows the 8 feeds, and a BEV panel shows the top-down map. Plots show perception accuracy
+   (voxel IoU against ground truth) and the distance to the nearest perceived obstacle.
+5. Scrub the timeline: the voxels, camera frames, and BEV map follow, so a near-miss can be traced
+   back to the frame where an obstacle was first seen. A Run-investigation scenario
+   (`ego.perception.min_obstacle_dist < 2.0 for 0.2 s`) finds every close call across runs.
+6. Export the run's camera streams as a recorded dataset; replay that dataset (or a real recorded
+   one in the same format) through the same pipeline offline.
+
+**Features used:** VW-01–VW-11, SN-02, VP-01–VP-08, DA-01–DA-04, RI-02, TB-VEH.
 
 ---
 
@@ -325,6 +357,41 @@ log of real robot data. Investigation works headless and from the UI.
 | RI-22 | Always-on background investigations across many runs in parallel. | Future |
 | RI-23 | Import MCAP, ROS 1/2 bags, and ArduPilot logs (with IO-03), and schema changes between log versions. | v1 |
 | RI-24 | Integrations (Slack, Jira, GitHub) and fleet data sources (S3, cloud storage, an edge upload agent). | Future |
+
+### 5.12 Vision world model (VW)
+
+Camera-based 3D perception in the style of Tesla's vision stack: a ring of calibrated cameras feeds
+a pipeline that turns images into a 3D model of the surroundings (an occupancy grid and a BEV map),
+and controllers drive from that model instead of from ground truth. Everything is built on
+**streams**: a stream is a sequence of timestamped, typed frames with one producer and any number
+of consumers. Cameras and recorded datasets are input streams; pipeline stages turn streams into
+new streams; the occupancy grid, BEV map and point cloud are output streams that the viewport,
+controllers, logger, and Run investigation consume. Depth comes from the simulated camera (the
+SN-02 ray caster already measures metric depth) or from a recorded dataset; estimating depth from
+plain RGB is v1. Grids use metres, the world frame, and Z up.
+
+| ID | Requirement | Tag |
+|---|---|---|
+| VW-01 | Camera rig: `sv.perception.CameraRig` attaches N calibrated cameras (RGB + metric depth, each with intrinsics K and a mount pose) to an entity. Presets: `CameraRig.surround(n=8)` for a car (narrow and wide front, two per side, rear) and `CameraRig.drone(n=6)`; custom layouts from a list of cameras. | MVP |
+| VW-02 | Frame streams: `sv.perception.Stream` carries frames with `t`, sequence number, source name, K, world-from-camera pose, `rgb`, and optional `depth`. Consumers read the latest frame or every frame since their last read. In a run, producers and consumers run inside the scheduler's tick, so streams are deterministic and lose no frames (SE-07); a slow UI consumer sees the latest frame and a drop count. Controllers read streams through `ctx.streams[name]`. | MVP |
+| VW-03 | Recorded datasets: a documented folder format (RGB PNGs, depth as 16-bit PNG in millimetres or `.npy` in metres, and a `cameras.json` with intrinsics, per-frame poses, and timestamps) replays as the same input streams, at recorded or scaled speed or as fast as possible. A run's camera streams export to the same format, so sim data and real data go through one path. | MVP |
+| VW-04 | Perception pipeline: `sv.perception.Pipeline(stages, rate=...)` chains stages, each a stream-in/stream-out step (built-in or any Python callable). It runs in the sim process during a run, or offline over a dataset (`pipeline.run(dataset)`), giving identical outputs for identical inputs. | MVP |
+| VW-05 | Back-projection stage: depth + K + pose → a world-frame point cloud (with RGB), with a range limit, pixel stride, and the rig's own vehicle masked out. Merges all rig cameras into one cloud per tick. | MVP |
+| VW-06 | Occupancy grid stage: a 3D voxel grid (resolution, extent, world-fixed or ego-centred and rolling) updated with log-odds per ray (free space along the ray, occupied at the hit), clamped, with optional decay so moved objects clear. Queries: `occupied(points)`, `is_free(a, b)` (segment check), `nearest_obstacle(pos, within=)`, and the occupied voxel centres. | MVP |
+| VW-07 | BEV map stage: a top-down 2D occupancy and height map from the grid (columns occupied within a height band, max height per column), as an image stream and an array. | MVP |
+| VW-08 | Perception views: the viewport renders occupied voxels (colored by height or confidence) and can toggle perceived vs true geometry; a Cameras panel shows the rig's feeds as a grid of thumbnails (click to enlarge); a BEV panel shows the map with the ego pose. 50k occupied voxels render at ≥30 FPS. | MVP |
+| VW-09 | Logging and replay: pipeline outputs are logged with the run (occupancy as sparse voxel snapshots and BEV images at a set interval, camera frames decimated or off), plus scalar signals (`<entity>.perception.min_obstacle_dist`, occupied voxel count). Scrubbing the timeline shows the perceived world at that time, and RI scenarios can use the scalar signals. | MVP |
+| VW-10 | Accuracy against ground truth: `sv.perception.evaluate(grid, scene)` gives voxel IoU, precision, recall, and nearest-obstacle distance error against the scene's true geometry, also loggable as signals during a run. | MVP |
+| VW-11 | Vision-only control: template `vision_drive` (UC-6): the UC-1 ego with an 8-camera surround rig and no lidar follows its lane and brakes or steers around static and slow obstacles using only the occupancy grid. | MVP |
+| VW-20 | Live webcam and video-file input streams (needs a video-reading dependency). | v1 |
+| VW-21 | Depth from plain RGB: a pretrained monocular depth model on the PyTorch extra turns ordinary camera or dashcam video into depth streams, with scale from known camera height or odometry. | v1 |
+| VW-22 | Stereo depth from camera pairs (block matching) as a pipeline stage. | v1 |
+| VW-23 | Semantic occupancy: per-voxel classes from the semantic-segmentation camera (SN-04). | v1 |
+| VW-24 | Occupancy flow: per-voxel velocity from successive grids, so moving obstacles are predicted rather than smeared. | v1 |
+| VW-30 | Learned occupancy network: train a model that predicts occupancy from multi-camera RGB alone, auto-labelled by the simulator's ground truth (a sim data engine). | Future |
+| VW-31 | Real-scene reconstruction: turn a recorded dataset into scene geometry (mesh or Gaussian splats) that SimView can simulate in and re-render from new viewpoints. | Future |
+| VW-32 | Neural world simulator: a learned model that predicts future camera frames from actions, for closed-loop testing of vision policies. | Future |
+| VW-33 | External streams: publish and subscribe to streams over the network and ROS 2 topics, so a real robot's cameras or an external perception stack can plug in live. | Future |
 
 ---
 
@@ -620,6 +687,30 @@ df = run.to_pandas()                                    # all logged signals
 sv.analysis.step_info(df["altitude"], t=df["t"])
 ```
 
+### 8.5 Perception streams (since 1.4)
+
+Streams (VW-02) live in the sim process. Cameras, rigs, and dataset readers produce frames inside
+the scheduler tick; pipeline stages consume and produce in the same tick at their own rate, so a run
+stays deterministic and NF-06 still holds. The UI never pulls raw frames per tick: the sim process
+publishes each output stream's latest frame (camera thumbnails, occupied voxel centres, BEV image)
+through a per-stream shared-memory slot sized for its frame, and a ZMQ event names the new sequence
+number; a UI that falls behind just shows the latest. The logger stores decimated snapshots in the
+run folder beside the Parquet log (VW-09), so playback reads them the same way as other signals. No
+new dependencies: NumPy for back-projection and fusion, PyVista for voxels, Qt for the image panels.
+
+```python
+rig = ego.attach(sv.perception.CameraRig.surround(n=8, width=160, height=120, rate=10))
+perceive = scene.add_pipeline(sv.perception.Pipeline(
+    [sv.perception.BackProject(max_range=40), sv.perception.OccupancyGrid(res=0.2, extent=60),
+     sv.perception.BevMap(z_band=(0.2, 2.5))], inputs=rig, name="ego"))
+
+@scene.controller(rate=20)
+def drive(t, state, ctx):
+    grid = ctx.streams["ego.occupancy"].latest()
+    gap = grid.nearest_obstacle(state.pos, within=30)
+    ...
+```
+
 ### 8.4 Repository layout
 
 ```
@@ -636,11 +727,12 @@ simview/
     runner/      run.py headless.py montecarlo.py
     rl/          env.py vec_env.py metrics.py
     analysis/    step.py freq.py stats.py
+    perception/  stream.py rig.py dataset.py pipeline.py backproject.py occupancy.py bev.py evaluate.py
     io/          mat.py csv.py project.py
     ui/          app.py main_window.py viewport/ plots/ blockeditor/ console/ inspector/ timeline/
     toolboxes/   robotics/ controls/ aero/ rl/   (built-ins, registered via entry points)
                  robotics/: kinematics.py se3.py dynamics.py trajectory.py controllers.py frames.py library.py
-    templates/   av_scenario/ drone_delivery/ ur5_ik/ drone_landing/
+    templates/   av_scenario/ drone_delivery/ ur5_ik/ drone_landing/ vision_drive/
   tests/         mirrors src/simview/
   examples/      one script per flagship use case
 ```
@@ -657,13 +749,14 @@ simview/
 | **Vehicles** | Kinematic bicycle model, pure pursuit, Stanley controller, road/lane scene primitives, scripted NPC agents. | MVP |
 | **RL** | `make_env`, VecEnv, metric logging, episode replay, and the drone-landing and arm-reach example envs. | MVP |
 | **Signal Processing** | FFT, PSD (Welch), FIR/IIR filter design blocks, spectrogram plot. | v1 |
-| **Perception** | Camera intrinsics and extrinsics, projection utilities, detection overlays, and point-cloud clustering. | v1 |
+| **Perception (world model)** | Since 1.4: camera rigs, frame streams, recorded datasets, perception pipeline, back-projection, occupancy grid, BEV map, accuracy against ground truth (§5.12). | MVP (M11) |
+| **Perception (extras)** | Projection utilities, detection overlays, point-cloud clustering, and §5.12's v1 items. | v1 |
 
 ---
 
 ## 10. MVP definition and milestone plan (12 weeks)
 
-**MVP cut:** every requirement tagged `[MVP]` above.
+**MVP cut:** every requirement tagged `[MVP]` above. M1–M10 are the original 12-week plan; M11 (PRD 1.4) follows M10.
 
 **Hero demo (the portfolio centerpiece): UC-2, Drone Delivery.** A single screen shows:
 - the 3D fleet flying its routes with trails, the wind, and each EKF's covariance ellipsoid,
@@ -693,6 +786,7 @@ Stop for review after each one.
 | 10 | **M8: Sensors + Aero/Vehicles toolboxes** | IMU, GPS, seeker, camera, lidar. Quadrotor, flight control, wind, EKF and UKF, bicycle model, pure pursuit. Point clouds and covariance ellipsoids. | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH | The UC-1 and UC-2 templates run end to end. |
 | 11 | **M9: Monte Carlo + RL** | Sweep runner, results view, analysis functions, `make_env`, VecEnv, training panel, click-to-replay. | SE-08, SE-09, DA-05, DA-06, ML-01–ML-04 | 50-trial Monte Carlo finishes. `env_checker` passes. PPO trains drone landing to >80% success, with replay working. |
 | 12 | **M10: Polish + hero demo** | Performance pass against NF-01–NF-07, the 4 templates, README with GIFs, a hero demo recording, and `docs/ARCHITECTURE.md`. | NF-01–NF-09, TB-01, TB-02, DS-11 | All MVP requirement IDs pass, all NF targets are met or the gaps are documented, a design QA pass is done (screenshots of every panel in both themes checked against §7), and the demo video is recorded. |
+| 13–14 | **M11: Vision world model** (PRD 1.4) | Camera rigs, frame streams, recorded datasets (import and export), perception pipeline, back-projection, occupancy grid, BEV map, voxel / camera / BEV views, logging and replay of perceived worlds, accuracy metrics, `vision_drive` template. | VW-01–VW-11 | In `vision_drive`, the camera-only ego stops or steers clear of every obstacle in 20 of 20 seeded runs with no lidar and no ground-truth reads. Occupancy IoU ≥ 0.7 against ground truth for static obstacles within 20 m at 0.2 m voxels. A run exported as a dataset and replayed offline gives a byte-identical grid. 50k voxels render at ≥30 FPS. `vision_drive` runs headless at ≥1× real time on the reference hardware. All earlier tests still pass. |
 
 ---
 
@@ -727,6 +821,8 @@ Stop for review after each one.
 | R4 | The block-diagram editor is large in scope. | The MVP block library is fixed at the list in BD-02. No multi-rate until v1. |
 | R5 | Qt binding conflicts (PySide6 vs PyQt6 dependencies such as QScintilla or qtconsole). | Standardize on PySide6 through `qtpy`. Verify in M1 that qtconsole works under PySide6. |
 | R6 | Offscreen camera rendering in the sim process could be slow. | Use MuJoCo's offscreen renderer (EGL/OSMesa on Linux) at reduced rate and resolution. The camera is optional per scene. |
+| R8 | The camera is ray cast on the CPU (D-093); 8 cameras at 160×120 and 10 Hz is ~150k rays per frame, which could pull `vision_drive` below real time. | Default rig size and rate chosen from a benchmark in M11; pixel stride in back-projection; vectorized log-odds updates. If still short, ask before adding an OpenGL depth path. |
+| R9 | Real recorded data needs accurate intrinsics, poses, and time sync, which many datasets lack. | The dataset format makes them required fields and validates them on load; v1 adds odometry-based poses. |
 | Q1 | Should the block editor also generate the Python script (BD-10) in the MVP, for portfolio value? | Default: no (v1). Revisit after M7. |
 | Q2 | Ship a standalone PyInstaller build for the MVP? | Default: no. `pip install` only, and revisit at M10. |
 | Q3 | License for SimView itself? | Default: MIT. Confirm before the first public push. |
