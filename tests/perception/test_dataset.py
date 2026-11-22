@@ -172,3 +172,58 @@ def test_replay_feeds_streams_at_the_chosen_speed(tmp_path):
     assert fast < 1.0
     with pytest.raises(ValueError):
         list(ds.replay(speed=0))
+
+
+# -- validation edge cases (M11 audit) --------------------------------------------------------
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    [
+        (lambda m: m["cameras"][0]["frames"][0].update(seq="7"), "seq must be an integer"),
+        (lambda m: m["cameras"][0]["frames"][0].update(seq=None), "seq must be an integer"),
+        (lambda m: m["cameras"][0]["frames"][0].update(t=True), "t must be a number"),
+        (lambda m: m["cameras"][0].update(height=True), "positive integers"),
+        (lambda m: m.update(format="other"), "not supported"),
+        (lambda m: m.update(version=2), "not supported"),
+        (lambda m: m["cameras"][0]["frames"][0].update(ego=[[1, 0], [0, 1]]), "ego"),
+    ],
+)
+def test_more_malformed_fields_are_dataset_errors(tmp_path, edit, message):
+    with pytest.raises(DatasetError, match=message):
+        Dataset(_broken(tmp_path, edit))
+
+
+def test_damaged_image_and_depth_files_are_dataset_errors(tmp_path):
+    ds = write_dataset(tmp_path / "ds", make_frames(n_cams=1, n=1))
+    info = ds.cameras[0].frames[0]
+    rgb, depth = tmp_path / "ds" / info.rgb, tmp_path / "ds" / info.depth
+    good_rgb = rgb.read_bytes()
+    rgb.write_bytes(good_rgb[:60])  # truncated: the zlib stream breaks
+    with pytest.raises(DatasetError, match="can't read the PNG"):
+        list(ds.frames())
+    rgb.write_bytes(good_rgb)
+    depth.write_bytes(b"not an npy file")
+    with pytest.raises(DatasetError, match="can't read the depth"):
+        list(ds.frames())
+    np.save(depth, np.array([["a"] * 32] * 24))
+    with pytest.raises(DatasetError, match="real numbers"):
+        list(ds.frames())
+    np.save(depth, np.ones((12, 16), np.float32))
+    with pytest.raises(DatasetError, match="depth is"):
+        list(ds.frames())
+
+
+def test_writer_refuses_frames_that_would_make_an_invalid_dataset(tmp_path):
+    a, b = make_frames(n_cams=1, n=2)
+    from simview.perception import DatasetWriter
+
+    with DatasetWriter(tmp_path / "ds") as w:
+        w.add(b)
+        with pytest.raises(ValueError, match="goes back"):
+            w.add(a)  # t 0.0 after 0.1
+        small = Frame(b.t, 9, b.source, b.K, b.pose, b.rgb[:10, :10], None)
+        with pytest.raises(ValueError, match="earlier frames were 32x24"):
+            w.add(small)
+        odd = Frame(b.t, 9, b.source, b.K, b.pose, b.rgb, np.ones((5, 5), np.float32))
+        with pytest.raises(ValueError, match="depth is"):
+            w.add(odd)
+    assert len(Dataset(tmp_path / "ds")) == 1  # still valid

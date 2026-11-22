@@ -1141,3 +1141,27 @@ VW-08 ≥ 30 FPS @ 50k criterion) are written but were not run (the dev box's sc
 run `QT_QPA_PLATFORM=windows SIMVIEW_GL=1 pytest -m gl tests/ui/test_viewport_gl.py`), plus a
 manual look at the vision_drive template: voxel colors, the BEV arrow's heading, thumbnail
 grid, light theme.
+
+**D-135 — M11 audit: edge-case behaviour (VW-02..VW-09).** Decisions taken while fixing bugs
+found in the M11 review. **Default pipeline inputs:** `Pipeline(inputs=None)` reads only the
+sensors' (camera rig) streams, not other pipelines' outputs (D-124 said "every stream except
+its own", which fed a second pipeline the first one's grids and crashed `BackProject`; the
+docstring already said "every camera stream"). **Readers after a reset:** `Stream.reset()` bumps
+`stream.epoch`; a `Reader` that sees a new epoch starts again from the first item (before, a
+reader kept its old cursor and missed every item of a replayed dataset). **Occupancy input:**
+points or camera origins that aren't finite are dropped before fusion (inf cast to a huge ray
+length on ARM); a rolling grid with no ego pose and no camera origins doesn't move; grids of
+2^31 voxels or more use int64 flat indices in ray tracing. **Snapshots:** voxel indices are
+uint16 (D-131), so a pipeline that logs snapshots refuses, when it is built, an
+`OccupancyGrid` with more than 65535 voxels along an axis (`snapshot_every=None` lifts it).
+**Closing runs:** `Sim.close()` is idempotent and now also runs when `sv.run` fails, when the
+sim process reloads a scene or its loop crashes (which also unlinks the shared memory), at each
+RL episode reset and `env.close()`, and at the end of an offline `Pipeline.run()`. **Datasets:**
+`cameras.json` with another `format`, or a `version` other than 1, is refused; `seq` must be an
+integer and `t`/`width`/`height` not booleans; damaged PNG/NPY files and non-numeric depth
+arrays are `DatasetError`s naming the file; `DatasetWriter.add` refuses a frame whose size
+differs from the camera's earlier frames, whose depth isn't the image's size, or whose time is
+not finite or goes back, so the writer can't produce a folder `Dataset` rejects. **Truth for
+meshes:** the search window around a mesh's bounding box uses the box's own radius (the geom's
+`rbound` is about its origin, not the box centre). **UI:** a damaged perception side file no
+longer stops a saved run from opening; the status bar says the snapshots weren't loaded.

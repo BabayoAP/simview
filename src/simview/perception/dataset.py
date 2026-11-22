@@ -25,8 +25,10 @@ Paths are relative to the folder.
 from __future__ import annotations
 
 import json
+import struct
 import time
 import weakref
+import zlib
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -75,6 +77,18 @@ def _matrix(value: Any, shape: tuple[int, int], where: str) -> np.ndarray:  # no
     return m
 
 
+def _is_int(value: Any) -> bool:  # noqa: ANN401
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _read_image(path: Path, rel: str) -> np.ndarray:
+    """read_png, with a damaged or unsupported file reported as a DatasetError."""
+    try:
+        return read_png(path)
+    except (OSError, ValueError, zlib.error, struct.error) as exc:
+        raise DatasetError(f"{rel}: can't read the PNG ({exc})") from None
+
+
 def _pose(value: Any, where: str) -> np.ndarray:  # noqa: ANN401
     m = _matrix(value, (4, 4), where)
     r = m[:3, :3]
@@ -96,10 +110,15 @@ class Dataset:
             raise DatasetError(f"{self.path}: no cameras.json (not a dataset folder)")
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise DatasetError(f"{meta_path}: invalid JSON ({exc})") from None
         if not isinstance(meta, dict) or not isinstance(meta.get("cameras"), list):
             raise DatasetError(f"{meta_path}: needs a 'cameras' list")
+        if meta.get("format", FORMAT) != FORMAT or meta.get("version", VERSION) != VERSION:
+            raise DatasetError(
+                f"{meta_path}: format {meta.get('format')!r} version {meta.get('version')!r} "
+                f"is not supported (this reads {FORMAT!r} version {VERSION})"
+            )
         if not meta["cameras"]:
             raise DatasetError(f"{meta_path}: 'cameras' is empty")
         self.cameras = [self._camera(c, i) for i, c in enumerate(meta["cameras"])]
@@ -120,7 +139,7 @@ class Dataset:
             raise DatasetError(f"{where}.name must be a non-empty string")
         where = f"cameras.json: camera {name!r}"
         w, h = c["width"], c["height"]
-        if not (isinstance(w, int) and isinstance(h, int) and w > 0 and h > 0):
+        if not (_is_int(w) and _is_int(h) and w > 0 and h > 0):
             raise DatasetError(f"{where}: width and height must be positive integers")
         k = _matrix(c["K"], (3, 3), f"{where}.K")
         if k[0, 0] <= 0 or k[1, 1] <= 0 or not np.allclose(k[2], [0, 0, 1]):
@@ -137,8 +156,11 @@ class Dataset:
                 if key not in f:
                     raise DatasetError(f"{fw} is missing required field {key!r}")
             t = f["t"]
-            if not isinstance(t, (int, float)) or not np.isfinite(t):
+            if isinstance(t, bool) or not isinstance(t, (int, float)) or not np.isfinite(t):
                 raise DatasetError(f"{fw}.t must be a number (seconds)")
+            seq = f.get("seq", j)
+            if not _is_int(seq):
+                raise DatasetError(f"{fw}.seq must be an integer")
             if t < last:
                 raise DatasetError(f"{fw}.t goes back in time ({t} < {last})")
             last = float(t)
@@ -154,7 +176,7 @@ class Dataset:
             cam.frames.append(
                 FrameInfo(
                     t=float(t),
-                    seq=int(f.get("seq", j)),
+                    seq=int(seq),
                     pose=_pose(f["pose"], f"{fw}.pose"),
                     rgb=f["rgb"],
                     depth=f.get("depth"),
@@ -173,7 +195,7 @@ class Dataset:
 
     def load(self, cam: CameraInfo, info: FrameInfo) -> Frame:
         """Read one frame's images (checks their size against the camera's)."""
-        rgb = read_png(self.path / info.rgb)
+        rgb = _read_image(self.path / info.rgb, info.rgb)
         if rgb.ndim != 3 or rgb.dtype != np.uint8:
             raise DatasetError(f"{info.rgb}: RGB images must be 8-bit color")
         if rgb.shape[:2] != (cam.height, cam.width):
@@ -185,9 +207,16 @@ class Dataset:
         if info.depth is not None:
             p = self.path / info.depth
             if p.suffix.lower() == ".npy":
-                depth = np.load(p, allow_pickle=False).astype(np.float32)
+                try:
+                    raw = np.load(p, allow_pickle=False)
+                except (OSError, ValueError) as exc:
+                    msg = f"{info.depth}: can't read the depth array ({exc})"
+                    raise DatasetError(msg) from None
+                if raw.dtype.kind not in "fiu":
+                    raise DatasetError(f"{info.depth}: depth must be real numbers, got {raw.dtype}")
+                depth = raw.astype(np.float32)
             else:
-                mm = read_png(p)
+                mm = _read_image(p, info.depth)
                 if mm.ndim != 2 or mm.dtype != np.uint16:
                     raise DatasetError(f"{info.depth}: depth PNGs must be 16-bit grayscale (mm)")
                 depth = np.where(mm == 0, np.inf, mm.astype(np.float32) / 1000.0).astype(np.float32)
@@ -247,6 +276,7 @@ class DatasetWriter:
         self.path.mkdir(parents=True, exist_ok=True)
         self._cams: dict[str, dict[str, Any]] = {}
         self._frames: dict[str, list[str]] = {}  # pre-serialized frame entries per camera
+        self._last_t: dict[str, float] = {}
 
     def add(self, frame: Frame) -> None:
         name = frame.source
@@ -260,8 +290,25 @@ class DatasetWriter:
                 "K": np.asarray(frame.K, dtype=np.float64).tolist(),
             }
             self._frames[name] = []
+            self._last_t[name] = -np.inf
             (self.path / name / "rgb").mkdir(parents=True, exist_ok=True)
             (self.path / name / "depth").mkdir(parents=True, exist_ok=True)
+        # What Dataset() checks on open, refused here so the writer never makes an invalid folder
+        head = self._cams[name]
+        size = (head["width"], head["height"])
+        if (frame.width, frame.height) != size:
+            raise ValueError(
+                f"{name}: frame is {frame.width}x{frame.height}, earlier frames were "
+                f"{size[0]}x{size[1]}"
+            )
+        if frame.depth is not None and np.shape(frame.depth) != (size[1], size[0]):
+            shape = np.shape(frame.depth)
+            raise ValueError(f"{name}: depth is {shape}, rgb is {size[1]}x{size[0]}")
+        if not (np.isfinite(frame.t) and frame.t >= self._last_t[name]):
+            raise ValueError(
+                f"{name}: frame time {frame.t} isn't finite or goes back from {self._last_t[name]}"
+            )
+        self._last_t[name] = float(frame.t)
         i = len(self._frames[name])
         rgb = f"{name}/rgb/{i:06d}.png"
         write_png(self.path / rgb, np.asarray(frame.rgb, dtype=np.uint8))

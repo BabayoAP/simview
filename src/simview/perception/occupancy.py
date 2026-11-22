@@ -103,6 +103,8 @@ class OccupancyGrid:
         return self
 
     def _recenter(self, xy: np.ndarray) -> None:
+        if not np.all(np.isfinite(xy)):  # no usable ego position (e.g. no cameras): stay put
+            return
         center = np.round(np.asarray(xy, dtype=np.float64) / self.res) * self.res
         new = self._lower_corner(center)
         shift = np.round((new[:2] - self.origin[:2]) / self.res).astype(int)
@@ -135,8 +137,10 @@ class OccupancyGrid:
         if self.rolling:
             if cloud.ego is not None:
                 xy = np.asarray(cloud.ego)[:2, 3]
+            elif len(cloud.origins):
+                xy = np.asarray(cloud.origins)[:, :2].mean(axis=0)
             else:
-                xy = cloud.origins[:, :2].mean(axis=0)
+                xy = np.full(2, np.nan)
             self._recenter(xy)
         lo = self.logodds.reshape(-1)
         if self.decay:
@@ -145,15 +149,23 @@ class OccupancyGrid:
         self.t, self.version = float(cloud.t), self.version + 1
         self.ego = None if cloud.ego is None else np.asarray(cloud.ego, dtype=np.float64).copy()
         self._centers = None
-        pts = np.asarray(cloud.points, dtype=np.float64)
+        pts = np.asarray(cloud.points, dtype=np.float64).reshape(-1, 3)
         if len(pts) == 0:
             return
+        origins = np.asarray(cloud.origins, dtype=np.float64)[np.asarray(cloud.origin_index)]
+        # Non-finite points or camera origins carry no geometry; dropping them also keeps the
+        # float -> int casts below defined (inf would cast to a huge ray length on ARM).
+        ok = np.isfinite(pts).all(axis=1) & np.isfinite(origins).all(axis=1)
+        if not ok.all():
+            pts, origins = pts[ok], origins[ok]
+            if len(pts) == 0:
+                return
         size = lo.size
         hit_mask = np.zeros(size, dtype=bool)
         occ = pts if self.floor is None else pts[pts[:, 2] >= self.floor]
         hit_idx, _ = self._flat(occ)
         hit_mask[hit_idx] = True
-        free_mask = self._free_mask(cloud, pts)
+        free_mask = self._free_mask(origins, pts)
         free_mask &= ~hit_mask
         seen = self.seen.reshape(-1)
         lo[free_mask] += self.l_free
@@ -162,10 +174,10 @@ class OccupancyGrid:
         seen |= free_mask
         seen |= hit_mask
 
-    def _free_mask(self, cloud: PointCloud, pts: np.ndarray) -> np.ndarray:
-        """Voxels crossed by the rays, sampled every `res` from each camera to its point."""
+    def _free_mask(self, o: np.ndarray, pts: np.ndarray) -> np.ndarray:
+        """Voxels crossed by the rays, sampled every `res` from each ray's camera origin
+        `o` (N, 3) to its point."""
         mask = np.zeros(self.logodds.size, dtype=bool)
-        o = np.asarray(cloud.origins, dtype=np.float64)[cloud.origin_index]
         d = pts - o
         dist = np.linalg.norm(d, axis=1)
         step = self.res
@@ -182,10 +194,12 @@ class OccupancyGrid:
         first = np.repeat(np.cumsum(counts) - counts, counts)
         k = (np.arange(total, dtype=np.int64) - first).astype(np.float32) + np.float32(0.5)
         n = self.shape
-        flat = np.zeros(total, dtype=np.int32)
+        # int32 indices are faster; grids of 2**31 voxels or more need int64 flat indices
+        itype = np.int32 if mask.size < 2**31 else np.int64
+        flat = np.zeros(total, dtype=itype)
         inside = np.ones(total, dtype=bool)
         for a in range(3):
-            i = np.floor(start_v[ray, a] + dir_v[ray, a] * k).astype(np.int32)
+            i = np.floor(start_v[ray, a] + dir_v[ray, a] * k).astype(itype)
             inside &= (i >= 0) & (i < n[a])
             flat *= n[a]
             flat += i

@@ -86,11 +86,14 @@ def truth_grid(
         rot = d.geom_xmat[g].reshape(3, 3)
         pos = d.geom_xpos[g].copy()
         size = m.geom_size[g].copy()
+        r = float(m.geom_rbound[g])
         if kind == MESH or kind not in (SPHERE, CAPSULE, ELLIPSOID, CYLINDER, BOX):
             aabb = m.geom_aabb[g]
             pos = pos + rot @ aabb[:3]
             size, kind = aabb[3:].copy(), BOX
-        r = float(m.geom_rbound[g]) if m.geom_rbound[g] > 0 else float(np.linalg.norm(size))
+            r = 0.0  # rbound is about the geom origin, not the box centre: bound the box itself
+        if r <= 0:
+            r = float(np.linalg.norm(size))
         lo = np.maximum(np.floor((pos - r - pad - lo_w) / res).astype(int), 0)
         hi = np.minimum(np.ceil((pos + r + pad - lo_w) / res).astype(int), n)
         if np.any(hi <= lo) or np.any(pos + r < lo_w) or np.any(pos - r > hi_w):

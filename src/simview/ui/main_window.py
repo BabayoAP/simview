@@ -1286,7 +1286,10 @@ class MainWindow(QMainWindow):
         want = next(iter(desc.pipelines), None) if desc is not None else None
         self.saved_snapshots = None
         if names:
-            self.saved_snapshots = load_snapshots(path, want if want in names else names[0])
+            try:
+                self.saved_snapshots = load_snapshots(path, want if want in names else names[0])
+            except (OSError, ValueError, KeyError) as exc:  # a damaged side file: run opens
+                self.statusBar().showMessage(f"Perception snapshots not loaded: {exc}", 6000)
         self._perc_key = None
 
     def show_finding(self, finding: Any) -> None:

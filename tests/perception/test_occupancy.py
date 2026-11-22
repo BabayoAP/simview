@@ -132,3 +132,55 @@ def test_argument_checks():
     with pytest.raises(ValueError):
         OccupancyGrid(decay=1.0)
     assert OccupancyGrid(res=0.2, extent=(10, 4)).shape == (50, 20, 20)
+
+
+# -- edge cases (M11 audit) -------------------------------------------------------------------
+def test_non_finite_points_and_origins_are_ignored():
+    g = grid()
+    pts = [[5.1, 0.1, 1.1], [np.inf, 0.0, 1.0], [np.nan, 1.0, 1.0], [1e300, -np.inf, 0.5]]
+    with np.errstate(all="raise"):  # no invalid float -> int casts either
+        g(cloud(pts, origin=(0.1, 0.1, 1.1)))
+    ref = grid()
+    ref(cloud([5.1, 0.1, 1.1], origin=(0.1, 0.1, 1.1)))
+    np.testing.assert_array_equal(g.logodds, ref.logodds)
+    bad = grid()
+    bad(cloud([5.0, 0.0, 1.0], origin=(np.nan, 0.0, 1.0)))
+    assert not bad.seen.any() and bad.version == 1
+
+
+def test_empty_cloud_and_points_outside_the_grid():
+    g = grid()
+    g(cloud(np.zeros((0, 3))))
+    assert g.version == 1 and not g.seen.any()
+    # a hit 30 m away is outside the 20 m grid: no occupancy, but the ray clears the inside
+    g(cloud([30.0, 0.1, 1.1], origin=(0.1, 0.1, 1.1)))
+    assert not g.occupancy.any()
+    assert g.is_free((0.1, 0.1, 1.1), (9.9, 0.1, 1.1)) and g.seen.any()
+    assert g.occupied([30.0, 0.1, 1.1]) is False
+
+
+def test_rolling_grid_without_ego_or_cameras_stays_put():
+    g = grid(rolling=True)
+    origin = g.origin.copy()
+    empty = PointCloud(
+        t=0.0,
+        points=np.zeros((0, 3)),
+        colors=np.zeros((0, 3), np.uint8),
+        origins=np.zeros((0, 3)),
+        origin_index=np.zeros(0, np.int32),
+    )
+    g(empty)
+    np.testing.assert_array_equal(g.origin, origin)
+    assert np.all(np.isfinite(g.origin))
+
+
+def test_rolling_grid_jump_past_its_extent_forgets_everything():
+    g = grid(rolling=True)
+    g(cloud([5.1, 0.1, 1.1], origin=(0.1, 0.1, 1.1)))
+    assert g.occupancy.any()
+    far = np.eye(4)
+    far[:2, 3] = [100.0, -50.0]
+    g(cloud(np.zeros((0, 3)), ego=far))
+    assert not g.seen.any() and not g.occupancy.any()
+    lo, hi = g.bounds
+    np.testing.assert_allclose((lo[:2] + hi[:2]) / 2, [100.0, -50.0])
