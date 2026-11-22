@@ -14,7 +14,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M5b: Run investigation (PRD 1.2) | ✅ Approved 2026-11-19 | `main` | RI-01–RI-06 |
 | M6: Console + workspace | ✅ Approved 2026-11-19 | `main` | SC-01–SC-05, IO-02, IO-04 |
 | M7: Block editor | ✅ Approved 2026-11-20 (CI: green except macOS GL, see Next) | `main` | BD-01–BD-08, DS-10 |
-| M8: Sensors + Aero/Vehicles toolboxes | Done, awaiting approval | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
+| M8: Sensors + Aero/Vehicles toolboxes | ✅ Approved 2026-11-21 | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
 | M9–M10 | Not started | | see PRD §10 |
 
 ## M1: Skeleton + design system
@@ -377,8 +377,8 @@ FPS readout showed 21-22 with the sim running live on this machine, for both tem
 
 ## Next
 
-1. M8 is done on `m8-sensors-aero-vehicles`: waiting for owner approval. Then open a PR
-   into `main` for CI; next milestone is M9.
+1. M8 approved 2026-11-21; PR into `main` open for CI. Owner is demoing M8 before M9
+   starts: don't begin M9 until asked.
 2. macOS GL CI: the repo is public since 2026-11-20, so Actions runs again. The first run on
    `main` (M7) is green except `gl (macos-latest)`, which crashes (exit 133) in
    `test_scrubbing_redraws_the_real_viewport_within_100_ms`, the only GL test that opens the
