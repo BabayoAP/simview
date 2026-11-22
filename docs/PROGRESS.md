@@ -14,7 +14,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M5b: Run investigation (PRD 1.2) | ✅ Approved 2026-11-19 | `main` | RI-01–RI-06 |
 | M6: Console + workspace | ✅ Approved 2026-11-19 | `main` | SC-01–SC-05, IO-02, IO-04 |
 | M7: Block editor | ✅ Approved 2026-11-20 (CI: green except macOS GL, see Next) | `main` | BD-01–BD-08, DS-10 |
-| M8: Sensors + Aero/Vehicles toolboxes | In progress | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
+| M8: Sensors + Aero/Vehicles toolboxes | Done, awaiting approval | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
 | M9–M10 | Not started | | see PRD §10 |
 
 ## M1: Skeleton + design system
@@ -292,7 +292,7 @@ Scope plot, and the toolbar's page switch. Problems (missing entity, unconnected
 as red outlines with the message under each block. Not checked by eye: dragging, the
 quick-add popup, and the wire-hover tooltip on a real display (all three are tested).
 
-## M8: Sensors + Aero/Vehicles toolboxes (in progress)
+## M8: Sensors + Aero/Vehicles toolboxes
 
 - Part 1 (`3193fd1`): sensors in `simview/sensors/` (IMU, GPS, seeker, camera, lidar) mounted
   with `entity.attach(...)` and logged as `<entity>.<sensor>.<field>`; `scene.attach_shape`
@@ -347,11 +347,38 @@ quick-add popup, and the wire-hover tooltip on a real display (all three are tes
 - 450 tests pass (Mac, Python 3.12, offline: 20 skipped), 16 GL tests pass, lint clean.
 - Not in M8 (per the PRD milestone table): the 50-trial Monte Carlo and its histogram (SE-08,
   DA-06: M9) and the UC-2 hero demo with a block-diagram version of the loop (M10).
-- To do: requirement mapping and the M8 sign-off.
+- D-081 rerun: `tests/toolboxes/aero/test_pid_quadrotor.py` flies the M7 altitude PID
+  (`examples/drone_altitude/altitude.svd`) on the 6-DOF `sv.aero.Quadrotor` (thrust only), as a
+  diagram and as a script: x, y, z, vz and qw match within 1e-9, it climbs to 2 m and holds,
+  and the body stays level over its start point. The M7 example itself keeps its 1-D model.
+- Verified on Windows (Python 3.13, GTX 1050 Ti): 451 tests pass (offline: 20 skipped), all
+  16 GL tests pass with `QT_QPA_PLATFORM=windows SIMVIEW_GL=1` (incl. the 200k-point cloud at
+  30 FPS), lint and format clean.
+- Done-when: the UC-1 and UC-2 templates run end to end ✅ (headless in
+  `tests/templates/`, and from their start-screen cards in `tests/ui/test_scene_session.py`).
+- Requirement IDs: SN-01 ✅ (IMU, GPS, seeker: `tests/sensors/`) SN-02 ✅ (pinhole camera:
+  color, depth, intrinsics, rate, determinism) SN-03 ✅ (MuJoCo ray lidar: beams, FOV, range,
+  noise) VP-08 ✅ (cloud draws; 200k points under 33 ms per frame, GL test) VP-09 ✅ (ellipsoid
+  from covariance and sigma; GL test) TB-AERO ✅ (`tests/toolboxes/aero/`, UC-2 template)
+  TB-VEH ✅ (`tests/toolboxes/vehicles/`, UC-1 template).
+- Not met yet: NF-03's 10x real time for UC-2 (6.5x now), left for the M10 performance pass
+  (see above).
+
+### Manual checks (visual, §0 rule 5)
+
+Dark theme on the Mac (parts 4 and 6). Light theme on Windows: both templates opened from
+their cards and run live in the app (UC-2 for 15 s, UC-1 for 10 s), whole window captured from
+the screen. UC-2: routes, depots and pads, the wind arrow, and the ground shadow read clearly on
+the light background. UC-1: road edges, dashed lane line, the ego's path, NPC boxes, and the
+lidar cloud (blue rings) are visible. At the default camera distance the quadrotors and their
+3-sigma ellipsoids (about 0.2 m) can't be made out (not checked zoomed in). The viewport's
+FPS readout showed 21-22 with the sim running live on this machine, for both templates
+(VP-08's 30 FPS GL test measures rendering alone and passes).
 
 ## Next
 
-1. Finish M8 (list above) on `m8-sensors-aero-vehicles`, then open a PR into `main` for CI.
+1. M8 is done on `m8-sensors-aero-vehicles`: waiting for owner approval. Then open a PR
+   into `main` for CI; next milestone is M9.
 2. macOS GL CI: the repo is public since 2026-11-20, so Actions runs again. The first run on
    `main` (M7) is green except `gl (macos-latest)`, which crashes (exit 133) in
    `test_scrubbing_redraws_the_real_viewport_within_100_ms`, the only GL test that opens the
