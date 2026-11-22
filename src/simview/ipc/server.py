@@ -85,6 +85,7 @@ class Server:
         except Exception:  # noqa: BLE001 - any user error must reach the console (NF-10)
             self.error()
             return False
+        self._close_sim()  # the previous run ends: its pipelines finish their files
         self.scene, self.sim = scene, sim
         if self.perception is not None:
             self.perception.close()
@@ -135,6 +136,15 @@ class Server:
                 self.scene.world.reset()
             self.sim.tick = 0
         self.sock.send_pyobj({"event": proto.REPLAYED, "rows": rows, "dt": dt, "path": path})
+
+    def _close_sim(self) -> None:
+        """End the current run (`Sim.close()`); a failing user `close()` reaches the console."""
+        if self.sim is None:
+            return
+        try:
+            self.sim.close()
+        except Exception:  # noqa: BLE001 - a user stage's close() must not kill the sim
+            self.error()
 
     def error(self) -> None:
         self.running = False
@@ -250,6 +260,21 @@ class Server:
     def run(self) -> None:
         sys.stdout = _Forward(self.sock, "stdout")  # type: ignore[assignment]
         sys.stderr = _Forward(self.sock, "stderr")  # type: ignore[assignment]
+        try:
+            self._loop()
+        finally:  # also on a crash: shared memory is unlinked and the run's files finished
+            self._close_sim()
+            if self.buffer is not None:
+                self.buffer.close(unlink=True)
+                self.buffer = None
+            if self.perception is not None:
+                self.perception.close()
+            sys.stdout, sys.stderr = sys.__stdout__, sys.__stderr__  # the socket closes next
+            self.sock.send_pyobj({"event": proto.STOPPED})
+            self.sock.close(linger=500)
+            self.ctx.term()
+
+    def _loop(self) -> None:
         self.load()
         poller = zmq.Poller()
         poller.register(self.sock, zmq.POLLIN)
@@ -283,13 +308,6 @@ class Server:
                     break
             self._measure_rtf()
             self.publish()
-        if self.buffer is not None:
-            self.buffer.close(unlink=True)
-        if self.perception is not None:
-            self.perception.close()
-        self.sock.send_pyobj({"event": proto.STOPPED})
-        self.sock.close(linger=500)
-        self.ctx.term()
 
 
 def serve(scene_path: str, address: str) -> None:

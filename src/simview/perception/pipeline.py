@@ -142,9 +142,15 @@ class Pipeline:
         return names
 
     def bind(self, sim: Sim, streams: dict[str, Stream]) -> None:
-        """Called when a run starts: reset, subscribe to the inputs, publish the outputs."""
+        """Called when a run starts: reset, subscribe to the inputs, publish the outputs.
+        With `inputs=None` only the sensors' (camera) streams are inputs, not other
+        pipelines' outputs (D-135)."""
         self.reset()
-        names = self.input_names(streams)
+        available: Iterable[str] = streams
+        if self.inputs is None:
+            sensor_streams = {n for s, _ in sim.sensors for n in getattr(s, "streams", {})}
+            available = [n for n in streams if n in sensor_streams]
+        names = self.input_names(available)
         self._readers = [streams[n].reader() for n in names]
         for n, s in self.outputs.items():
             if n in streams:
@@ -183,6 +189,7 @@ class Pipeline:
             key = k
             batch.append(f)
         self._flush(batch, order)
+        self.close()  # the run ended: e.g. a `Record` stage writes its index (D-132)
         return self.latest()
 
     def _step_of(self, t: float) -> float:

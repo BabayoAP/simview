@@ -67,10 +67,12 @@ class Stream:
         self.maxlen = int(maxlen)
         self._items: deque[_Item] = deque(maxlen=self.maxlen)
         self.seq = -1  # sequence number of the newest item (-1 = none yet)
+        self.epoch = 0  # bumped by reset(), so readers know sequence numbers restarted
 
     def reset(self) -> None:
         self._items.clear()
         self.seq = -1
+        self.epoch += 1
 
     def push(self, value: Any, t: float) -> int:  # noqa: ANN401 - streams carry any item
         """Append an item; returns its sequence number (0, 1, 2, ...)."""
@@ -109,9 +111,20 @@ class Reader:
     stream: Stream
     cursor: int = -1  # last seq read
     dropped: int = 0
+    epoch: int = -1  # the stream's epoch at the last read (-1: take the stream's on creation)
+
+    def __post_init__(self) -> None:
+        if self.epoch < 0:
+            self.epoch = self.stream.epoch
+
+    def _sync(self) -> None:
+        """After the stream was reset, read it again from its first item."""
+        if self.epoch != self.stream.epoch:
+            self.epoch, self.cursor = self.stream.epoch, -1
 
     def since_last(self) -> list[Any]:
         """Every item since this reader's last read, oldest first."""
+        self._sync()
         items = self.stream.items(self.cursor)
         if items:
             self.dropped += items[0][0] - self.cursor - 1
@@ -120,6 +133,7 @@ class Reader:
 
     def latest(self) -> Any:  # noqa: ANN401
         """The newest item (None before the first); items skipped count as dropped."""
+        self._sync()
         seq = self.stream.seq
         if seq > self.cursor:
             self.dropped += seq - self.cursor - 1
@@ -129,4 +143,5 @@ class Reader:
     @property
     def pending(self) -> int:
         """Items published since the last read."""
-        return max(0, self.stream.seq - self.cursor)
+        cursor = self.cursor if self.epoch == self.stream.epoch else -1
+        return max(0, self.stream.seq - cursor)

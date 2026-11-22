@@ -68,7 +68,11 @@ class Sim:
         return self.tick * self.dt
 
     def close(self) -> None:
-        """End the run: pipelines finish their files (e.g. a `Record` dataset's index)."""
+        """End the run: pipelines finish their files (e.g. a `Record` dataset's index).
+        Safe to call more than once; only the first call closes the pipelines."""
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
         for p, _ in self.pipelines:
             p.close()
 

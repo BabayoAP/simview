@@ -134,3 +134,21 @@ def test_sv_perception_is_registered_like_a_toolbox_module():
     assert sv.perception.Pipeline is Pipeline
     assert "perception" in registry.toolboxes()
     assert registry.toolboxes()["perception"].error is None
+
+
+def test_offline_run_closes_its_stages_so_a_record_index_exists(tmp_path):
+    scene, ego = box_scene()
+    rig = ego.attach(CameraRig.surround(n=2, width=16, height=12, rate=10))
+    run_ticks(scene, 0)
+    frames = [s.latest() for s in rig.streams.values()]
+    p = Pipeline([Record(tmp_path / "out", flush_every=None)], rate=10)
+    p.run(frames)
+    assert len(Dataset(tmp_path / "out")) == 2  # written by run(), not left to the GC
+    del p
+
+
+def test_snapshots_refuse_grids_too_big_for_uint16_indices():
+    big = OccupancyGrid(res=1.0, extent=(70000.0, 1.0), height=(0.0, 1.0))
+    with pytest.raises(ValueError, match="uint16"):
+        Pipeline([BackProject(), big])
+    Pipeline([BackProject(), big], snapshot_every=None)  # no snapshots: fine

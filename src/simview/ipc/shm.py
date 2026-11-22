@@ -214,6 +214,8 @@ class FrameSlot:
             raise ValueError(f"unsupported frame {arr.dtype} with {arr.ndim} dims")
         if not self.fits(arr):
             raise ValueError("frame larger than the slot")
+        if len(meta) > SLOT_META:
+            raise ValueError(f"a slot holds at most {SLOT_META} metadata values")
         ints = self.ints
         ints[0] += 1  # odd: writing
         ints[1] = seq

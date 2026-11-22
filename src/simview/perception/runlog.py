@@ -44,6 +44,7 @@ if TYPE_CHECKING:
 SUFFIX = ".perception"
 IOU_BAND = (0.2, 2.5)  # z range (m) scored by the iou signal (the default BEV band)
 IOU_EVERY = 0.5  # s: the iou signal is recomputed at most this often (it reads every geom)
+MAX_SNAPSHOT_CELLS = 65535  # voxels per axis a snapshot can index (uint16, D-135)
 
 SNAPSHOT_SCHEMA = pa.schema(
     [
@@ -95,6 +96,14 @@ class PerceptionLog:
         for name, v in (("snapshot_every", snapshot_every), ("camera_every", camera_every)):
             if v is not None and v <= 0:
                 raise ValueError(f"{name} must be positive (or None for off)")
+        if snapshot_every is not None:
+            for stage in pipeline.stages:
+                if isinstance(stage, OccupancyGrid) and max(stage.shape) > MAX_SNAPSHOT_CELLS:
+                    raise ValueError(
+                        f"snapshots store voxel indices as uint16: a grid of {stage.shape} "
+                        f"voxels is over {MAX_SNAPSHOT_CELLS} along an axis; use a coarser "
+                        "res, a smaller extent, or snapshot_every=None (D-135)"
+                    )
         self.pipeline = pipeline
         self.entity = entity
         self.signals = signals

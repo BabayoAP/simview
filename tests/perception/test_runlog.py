@@ -170,3 +170,48 @@ def test_record_flushes_every_n_steps_and_through_sv_run(tmp_path):
     scene, _ = make_scene(tmp_path)
     sv.run(scene, 0.5, out=tmp_path / "r.parquet")  # sv.run closes the pipelines
     assert len(Dataset(tmp_path / "ds")) == 8 * 6
+
+
+def test_a_failing_run_still_closes_its_pipelines(tmp_path):
+    scene, ego = box_scene()
+    rig = ego.attach(CameraRig.surround(n=2, width=8, height=6, rate=10))
+    scene.add_pipeline(Pipeline([Record(tmp_path / "ds", flush_every=None)], inputs=rig))
+
+    @scene.controller(rate=10)
+    def boom(t, state, ctx):
+        if t >= 0.25:
+            raise RuntimeError("controller bug")
+        return {}
+
+    with pytest.raises(RuntimeError, match="controller bug"):
+        sv.run(scene, 1.0, out=tmp_path / "r.parquet")
+    assert len(Dataset(tmp_path / "ds")) >= 2 * 3  # the index was written on the way out
+
+
+def test_sim_close_is_idempotent():
+    calls = []
+
+    class Closer:
+        output = "c"
+
+        def __call__(self, items):
+            return items
+
+        def close(self):
+            calls.append(1)
+
+    scene, ego = box_scene()
+    ego.attach(CameraRig.surround(n=1, width=8, height=6))
+    scene.add_pipeline(Pipeline([Closer()]))
+    sim = Sim(scene)
+    sim.close()
+    sim.close()
+    assert calls == [1]
+
+
+def test_runs_without_perception_have_no_snapshots(tmp_path):
+    scene, _ = box_scene()
+    run = sv.run(scene, 0.1, out=tmp_path / "plain.parquet")
+    assert snapshot_pipelines(run) == [] and not perception_dir(run).exists()
+    with pytest.raises(FileNotFoundError):
+        load_snapshots(run)

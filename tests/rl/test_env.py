@@ -197,3 +197,27 @@ def test_recorded_episodes_replay_as_runs(tmp_path, monkeypatch):
     info = read_info(tr.recorded()[0]["log"])
     assert info.scene and info.scene.endswith("scene.py") and info.rows > 10
     assert not tr.refresh()  # nothing new
+
+
+def test_each_episode_run_is_closed():
+    """D-132: the env ends each episode's run (Sim.close) on the next reset and on close()."""
+    from simview.core import scheduler
+
+    closed = []
+    orig = scheduler.Sim.close
+
+    def spy(self):
+        closed.append(id(self))
+        orig(self)
+
+    env = cart_env()
+    try:
+        scheduler.Sim.close = spy
+        env.reset(seed=1)
+        first = env.sim
+        env.reset(seed=2)
+        assert id(first) in closed
+        env.close()
+        assert id(env.sim) in closed
+    finally:
+        scheduler.Sim.close = orig

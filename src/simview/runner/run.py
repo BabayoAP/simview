@@ -137,12 +137,14 @@ def run(
     log = Logger(sim, n + 1)
     start_params = scene.params.to_json()  # changes during the run are `params.*` columns
     start = time.perf_counter()
-    log.record()
-    for _ in range(n):
-        sim.step()
+    try:
         log.record()
-    wall = time.perf_counter() - start
-    sim.close()
+        for _ in range(n):
+            sim.step()
+            log.record()
+        wall = time.perf_counter() - start
+    finally:  # a failed run still finishes its pipelines' files (e.g. a Record's index)
+        sim.close()
     path = Path(out) if out is not None else default_log_path(scene.seed)
     log.write(path, run_metadata(scene, duration, source="sim", params=start_params))
     if scene.pipelines:
