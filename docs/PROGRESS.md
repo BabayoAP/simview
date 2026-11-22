@@ -15,8 +15,8 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M6: Console + workspace | ✅ Approved 2026-11-19 | `main` | SC-01–SC-05, IO-02, IO-04 |
 | M7: Block editor | ✅ Approved 2026-11-20 (CI: green except macOS GL, see Next) | `main` | BD-01–BD-08, DS-10 |
 | M8: Sensors + Aero/Vehicles toolboxes | ✅ Approved 2026-11-21 | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
-| M9: Monte Carlo + RL | In progress | `m9-monte-carlo-rl` | SE-08, SE-09, DA-05, DA-06, ML-01–ML-04 |
-| M10 | Not started | | see PRD §10 |
+| M9: Monte Carlo + RL | ✅ Approved 2026-11-22 | `m9-monte-carlo-rl` | SE-08, SE-09, DA-05, DA-06, ML-01–ML-04 |
+| M10: Polish + hero demo | In progress | `m10-polish-demo` | NF-01–NF-09, TB-01, TB-02, DS-11 |
 
 ## M1: Skeleton + design system
 
@@ -438,9 +438,8 @@ drone-landing env, (4) training panel + click-to-replay, then the PPO done-when.
 
 ## Next
 
-1. M9 built on `m9-monte-carlo-rl` (branched from the M8 branch): waiting for the owner's
-   approval. M8 approved 2026-11-21; its PR into `main` is open (the owner merges). Don't start
-   M10 until M9 is approved.
+1. M9 approved 2026-11-22. M10 (polish + hero demo) in progress on `m10-polish-demo`.
+   M8's PR into `main` is open (the owner merges); M9's PR follows it.
 2. macOS GL CI: the repo is public since 2026-11-20, so Actions runs again. The first run on
    `main` (M7) is green except `gl (macos-latest)`, which crashes (exit 133) in
    `test_scrubbing_redraws_the_real_viewport_within_100_ms`, the only GL test that opens the
