@@ -1,0 +1,28 @@
+# The hero demo's checks as a scenario test suite (PRD §10, M12):
+#     simview test src/simview/templates/drone_delivery/checks.toml
+# The demo's 50-trial sweep varies GPS noise 0.4-1.6 m and gusts 0.5-3 m/s; this suite samples
+# the same ranges and checks every drone delivers, the EKF error stays inside its 3-sigma bound
+# (no stretch outside it longer than 1 s), and no drone strays far from its route.
+name = "Drone delivery (hero demo)"
+
+[[scenario]]
+name = "delivery under noise and gusts"
+scene = "scene.py"
+duration = 30
+samples = 8
+seed = 0
+metrics = ["delivery_time", "rms_error", "max_deviation"]
+tolerance = 0.1
+criteria = [
+    { name = "d0 delivers", must = "d0_delivered > 0 within 28 s" },
+    { name = "d1 delivers", must = "d1_delivered > 0 within 28 s" },
+    { name = "d2 delivers", must = "d2_delivered > 0 within 28 s" },
+    { name = "d0 EKF inside 3 sigma", must_not = "abs(d0_err_x) > d0_bound_x or abs(d0_err_y) > d0_bound_y or abs(d0_err_z) > d0_bound_z for 1 s" },
+    { name = "d1 EKF inside 3 sigma", must_not = "abs(d1_err_x) > d1_bound_x or abs(d1_err_y) > d1_bound_y or abs(d1_err_z) > d1_bound_z for 1 s" },
+    { name = "d2 EKF inside 3 sigma", must_not = "abs(d2_err_x) > d2_bound_x or abs(d2_err_y) > d2_bound_y or abs(d2_err_z) > d2_bound_z for 1 s" },
+    { name = "on route", must_not = "max(max(d0_dev, d1_dev), d2_dev) > 5" },
+]
+
+[scenario.params]
+gps_noise = { uniform = [0.4, 1.6] }
+gust = { uniform = [0.5, 3.0] }

@@ -38,10 +38,11 @@ src/simview/
   perception/   camera rigs, frame streams, datasets, depth -> occupancy grid and BEV map
   blocks/       block diagrams: model + .svd file, library, compiler, runtime. Qt-free
   ipc/          sim process, client, shared-memory state, history rows, message protocol
-  runner/       sv.run + Run handle, headless CLI, Monte Carlo sweeps
+  runner/       sv.run + Run handle, headless CLI, Monte Carlo sweeps, run manifests, reproduce
   rl/           make_env, make_vec_env, training metrics and recorded episodes
   analysis/     step_info, error stats, Bode and spectra
   investigate/  run catalog, scenarios, findings, reports, comparison, log import
+  testing/      scenario tests: suites (TOML / Python), criteria, JUnit + HTML, baselines
   io/           CSV/.mat import, exports, .svproj projects
   toolboxes/    registry (entry points) and the built-in robotics, aero, vehicles toolboxes
   templates/    one folder per start-screen card, each with a scene.py
@@ -83,6 +84,16 @@ imported robot logs (CSV or Parquet, RI-06) are converted to the same shape.
 
 Where runs go: `runs/` next to the scene file, the project's runs folder for a `.svproj`
 project, or `$SIMVIEW_RUNS` if set.
+
+Each log has a context sidecar, `<run>.run.json` (date, scene file), and in it a **manifest**
+(`runner/manifest.py`, RP-01): SimView/Python/NumPy/MuJoCo/SciPy/PyArrow versions, toolboxes,
+OS and CPU (off with `SIMVIEW_NO_MACHINE_INFO=1` / `--no-machine-info`), git commit and dirty
+flag, hashes of the scene's source files, diagrams and opened datasets, and the seed, params
+and duration read back from the log. Every path that saves a run calls `write_context` after
+writing the log (headless, app, RL episodes, sweep trials), so they all get one; a sweep also
+writes `manifest.json` beside its results. The Parquet file itself is untouched (NF-06).
+`simview reproduce <run>` (`runner/reproduce.py`, RP-02) re-runs the scene from that
+metadata, compares the logs exactly with RI-05's `compare`, and lists environment differences.
 
 ## Sim process and UI
 
@@ -148,6 +159,11 @@ is a `QStackedWidget` of pages (3D view, Diagram) rather than swapped widgets (D
 - `sv.make_env` wraps a scene as a Gymnasium env; `sv.make_vec_env` runs N of them in worker
   processes as a Stable-Baselines3 `VecEnv`. Metrics and recorded episodes go to a training
   folder that the Training panel follows and replays (ML-03, ML-04).
+
+- `simview test suite.toml` (`testing/`, ST-01..03) runs each scenario of a suite through
+  `sv.sweep` (keeping the logs), checks every log against the scenario's criteria (RI-02
+  patterns with `must:` / `must_not:`), writes JUnit XML and an HTML report built from RI-04's
+  run sections, and optionally saves or checks a baseline (verdicts + metrics per case).
 
 Because workers are spawned, scripts that start them need `if __name__ == "__main__":`, and
 workers are given a scene file, template id or builder function, never a `Scene` object.

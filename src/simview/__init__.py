@@ -20,6 +20,8 @@ __all__ = [
     "Run",
     "Scene",
     "SweepResults",
+    "TestScenario",
+    "TestSuite",
     "Uniform",
     "aero",
     "analysis",
@@ -27,11 +29,13 @@ __all__ = [
     "make_env",
     "make_vec_env",
     "perception",
+    "reproduce",
     "rl",
     "robotics",
     "run",
     "sensors",
     "sweep",
+    "testing",
     "vehicles",
 ]
 
@@ -58,6 +62,14 @@ def __getattr__(name: str) -> object:
         import simview.io as io
 
         return io
+    if name in ("TestScenario", "TestSuite", "testing"):  # ST-01
+        import simview.testing as testing
+
+        return testing if name == "testing" else getattr(testing, name)
+    if name == "reproduce":  # RP-02
+        from simview.runner.reproduce import reproduce
+
+        return reproduce
     if not name.startswith("_"):
         # Toolbox modules (TB-02): robotics, aero, vehicles, and any installed toolbox's.
         from simview.toolboxes import registry

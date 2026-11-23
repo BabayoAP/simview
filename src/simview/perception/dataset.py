@@ -41,6 +41,14 @@ from simview.perception.stream import Frame, Stream
 
 FORMAT = "simview-dataset"
 VERSION = 1
+_OPENED: set[Path] = set()  # dataset folders opened in this process (RP-01 manifests hash them)
+
+
+def opened_datasets() -> set[Path]:
+    """Every dataset folder opened in this process so far (resolved paths)."""
+    return set(_OPENED)
+
+
 DepthFormat = Literal["npy", "png16"]
 
 
@@ -135,6 +143,7 @@ class Dataset:
         if len(set(names)) != len(names):
             raise DatasetError(f"{meta_path}: camera names must be unique, got {names}")
         self.streams = {c.name: Stream(c.name) for c in self.cameras}
+        _OPENED.add(self.path.resolve())  # a valid dataset: RP-01 manifests hash it
 
     def _camera(self, c: Any, i: int) -> CameraInfo:  # noqa: ANN401
         where = f"cameras.json: cameras[{i}]"

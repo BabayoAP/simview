@@ -1233,3 +1233,74 @@ each frame by `model.merged_trails` from every trail's points with a per-point u
 reset when the theme reloads the scene). The per-entity `trail_actors` dict is gone (it was only
 used inside the viewport and by tests). NF-01's scene on the dev box (GTX 1050 Ti): median frame
 ~20 ms -> ~10.4 ms (~96 fps), so the 60 fps target is met even below the reference GPU.
+
+**D-141 — Run manifests and `simview reproduce` (M12, RP-01, RP-02).** The manifest lives in the
+run's context sidecar `<run>.run.json` under `manifest`, not in the Parquet footer, so a seeded
+run still writes a byte-identical log (NF-06). `write_context` builds it, and every path that
+saves a run already calls it after writing the log (headless `sv.run`, the app's Stop, RL episode
+recordings, sweep trials), so all of them get one; seed, params and duration are read back from
+the log's own metadata, so the manifest can't disagree with it. A sweep also writes
+`manifest.json` (plus its trial plan) beside `results.parquet`. Versions come from package
+metadata (no imports): SimView, Python, numpy, mujoco, scipy, pyarrow; toolboxes from the
+registry. "Hashes of scene files" = the scene file and the source-like files beside it
+(`.py .svd .toml .json .xml .urdf .mjcf .yaml .yml .csv`, not recursive, so a scene in a big
+folder stays cheap; files over 64 MB are listed as skipped), plus each diagram's `.svd` and
+every dataset folder opened in the process (`perception.dataset.opened_datasets()`, recorded
+once a folder validates; one hash over all its files). Machine info (OS, CPU, cores, hostname) is
+on by default (D-137 Q9) and left out with `SIMVIEW_NO_MACHINE_INFO=1`, which `--no-machine-info`
+on `simview run` / `simview test` sets (spawned workers inherit it). Git: `git -C <scene folder>`
+commit, dirty flag (`status --porcelain`) and root, or null without git or a repo.
+`simview reproduce <run>` loads the run's scene file with its seed and start params, runs it
+headless for its duration into a temp folder, and compares with RI-05's `compare` at atol 0
+(`--atol/--rtol` to loosen): identical means the same sample times, the same signal set and no
+diverging signal. Otherwise it names the earliest-diverging signal (ties by name) and its time.
+It always lists environment differences (versions, toolboxes, OS/CPU/hostname, git commit,
+changed / missing / new files). Exit codes: 0 identical, 1 diverged, 2 cannot reproduce
+(imported log, scene file gone, scene fails to load). Runs made before RP-01 still reproduce,
+reported as having no manifest. All 5 templates reproduce identically on the dev box (test).
+
+**D-142 — Scenario test criteria (M12, ST-01).** Criteria are strings with a verb in front of an
+RI-02 pattern (the PRD's `must_not: ...` / `must: ... within 120 s` syntax): `must_not: P` fails
+if P occurs anywhere; `must: P within T s` fails unless P occurs with its match starting by T;
+`must: P` with no deadline fails unless P occurs at all. So `must` means "exists" and `must_not`
+"never"; "always P" is written `must_not: not (P)`. `within` with `must_not` is rejected. A
+missing signal fails the criterion with "missing signals: ..." (never a silent pass, like
+RI-02). Evidence (RI-03): a `must_not` failure carries its match windows; a `must` failure
+carries the searched span [start, T]. In TOML a criterion is a string or `{ name, must |
+must_not }`. Initial conditions are scene parameters (scene files read `scene.params` while
+building, D-106), so there is no separate initial-state syntax. Parameters: number, number list
+(array param), `{ uniform = [lo, hi] }`, `{ normal = [mean, std], lo, hi }`, `{ choice = [...] }`;
+grid values: a list or `{ linspace = [lo, hi, n] }`. A Python suite file defines
+`suite = sv.TestSuite(...)`; relative scene paths are relative to the suite file. Each scenario
+runs through `sv.sweep` with `keep_logs=True` (logs, results table and the sweep manifest in
+`<out>/<scenario>/`), so samples run in parallel and repeat exactly whatever the worker count.
+The package is `simview.testing` (`sv.TestScenario`, `sv.TestSuite`).
+
+**D-143 — RI-05 comparison counts one-sided NaN as a divergence (M12).** Found while building
+RP-02: `compare` tested `|a - b| > tol`, which is False for NaN, so a signal that was NaN in one
+run and a number in the other (e.g. a sensor with no reading yet) compared as equal, and all-NaN
+signals raised NumPy warnings. Now NaN on exactly one side is a divergence, NaN on both sides is
+not, and max/RMS are taken over the finite differences (0 when there are none).
+
+**D-144 — Baselines and the regression gate (M12, ST-03).** A baseline is JSON: per case
+(`scenario#index`) its status, seed, params, verdict per criterion, and metrics (the scenario's
+`metrics`, default every metric the scene declares). Compared with a later run: a criterion
+passing before and failing now is a new failure; the reverse is newly passing; a case erroring
+now but not before is a new error; a metric drifts when |now − base| > atol + rtol·|base|
+(RI-05's tolerance rule) with rtol = the scenario's `tolerance` (default 0.1, per metric with a
+table) and atol 1e-9. Drift in either direction is a regression (SimView doesn't know which way
+is better; an intended change is accepted by saving a new baseline). Exit codes: without
+`--baseline`, 1 on any failed or erroring case (ST-02); with it, 1 only on regressions, so a
+failure already in the baseline is reported but doesn't block (that is the point of a baseline).
+New and missing cases are listed, not regressions.
+
+**D-145 — The hero demo's checks as a suite, and what it found (M12).**
+`templates/drone_delivery/checks.toml`: 8 samples over the hero demo's ranges (GPS noise
+0.4–1.6 m, gusts 0.5–3 m/s), 30 s each. Criteria: each drone delivers within 28 s (they take
+~22.6 s), each drone's EKF error stays inside its per-axis 3σ bound (no stretch outside longer
+than 1 s), and no drone strays more than 5 m from its route. It runs in ~15 s on 16 workers.
+First run: 7 of 8 pass; sample 2 (GPS noise 1.38 m, gust 2.78 m/s) has d2's error outside its 3σ
+bound for 1.2 s (14.9–16.1 s), i.e. the EKF is overconfident in strong gusts (its process noise
+doesn't cover them). The suite is left strict and the EKF untouched: retuning the template's
+filter changes the hero demo and is the owner's call (PROGRESS, Next). The pytest runs the first
+2 samples, which are mild and pass.

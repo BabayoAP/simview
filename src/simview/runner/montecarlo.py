@@ -38,6 +38,7 @@ import pyarrow.parquet as pq
 
 META_KEY = b"simview.sweep"
 RESULTS_NAME = "results.parquet"
+MANIFEST_NAME = "manifest.json"
 
 
 # -- parameter distributions -----------------------------------------------------------------
@@ -349,4 +350,10 @@ def sweep(
     }
     results_path = out_dir / RESULTS_NAME
     _write(rows, results_path, param_names, metric_names, meta)
+    from simview.runner.manifest import build_manifest
+
+    manifest = build_manifest(scene_file=path)  # RP-01: the sweep's environment and sources
+    manifest.update(seed=seed, duration=float(duration), plan=plan)
+    text = json.dumps(manifest, indent=2) + "\n"
+    (out_dir / MANIFEST_NAME).write_text(text, encoding="utf-8")
     return SweepResults(results_path)
