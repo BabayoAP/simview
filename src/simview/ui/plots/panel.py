@@ -436,7 +436,7 @@ class PlotView(QFrame):
         self.legend.setLabelTextColor(c("text.primary"))  # new entries
         for _sample, text in self.legend.items:  # and the ones already there
             text.setText(text.text, color=c("text.primary"))
-        self.legend.setBrush(pg.mkBrush(_alpha(c("bg.panel"), 200)))
+        self.legend.setBrush(pg.mkBrush(_alpha(c("bg.panel"), tokens.LEGEND_ALPHA)))
         self.legend.setPen(pg.mkPen(c("border.subtle")))
         self.cursor.setPen(pg.mkPen(c("accent"), width=tokens.PLOT_REF_WIDTH))
         self.hover_line.setPen(

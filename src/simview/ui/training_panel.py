@@ -15,7 +15,7 @@ from typing import Any
 import numpy as np
 import pyqtgraph as pg
 from qtpy.QtCore import Qt, QTimer, Signal
-from qtpy.QtGui import QFont
+from qtpy.QtGui import QColor, QFont
 from qtpy.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -80,7 +80,9 @@ class TrainingPanel(QWidget):
         self.plot = pg.PlotWidget(split)
         self.plot.setMinimumHeight(tokens.PLOT_MIN_HEIGHT)
         self.plot.setLabel("bottom", "step")
-        self.plot.addLegend()
+        # §7.6, as in the Plots panel: top right, shown only for 2+ curves (one curve is named
+        # by its axis label), so it doesn't sit on the curve.
+        self.legend = self.plot.addLegend(offset=(-s[1], s[1]))
         self.recorded = pg.ScatterPlotItem()  # recorded episodes: click to replay
         self.recorded.sigClicked.connect(self._point_clicked)
         self.recorded.setZValue(10)
@@ -167,6 +169,10 @@ class TrainingPanel(QWidget):
                 item.setPen(pg.mkPen(color, width=tokens.PLOT_LINE_WIDTH))
                 self.items[name] = item
             item.setData(steps, values)
+        self.legend.setVisible(len(names) > 1)
+        # The short name ("return" for "episode/return"): a short dock clips the long one, and
+        # the full name stays checked in the list beside the plot.
+        self.plot.setLabel("left", names[0].rsplit("/", 1)[-1] if len(names) == 1 else "")
         rec = run.recorded() if EPISODE_RETURN in names else []
         self.recorded.setData(
             x=[e["step"] for e in rec],
@@ -204,6 +210,13 @@ class TrainingPanel(QWidget):
             axis.setTextPen(pg.mkPen(c("text.secondary")))
             axis.setTickFont(mono)
             axis.label.setFont(QFont(tokens.FONT_UI, tokens.FONT_SIZE["secondary"]))
+        self.legend.setLabelTextColor(c("text.primary"))
+        for _sample, text in self.legend.items:
+            text.setText(text.text, color=c("text.primary"))
+        fill = QColor(c("bg.panel"))
+        fill.setAlpha(tokens.LEGEND_ALPHA)
+        self.legend.setBrush(pg.mkBrush(fill))
+        self.legend.setPen(pg.mkPen(c("border.subtle")))
         self.recorded.setPen(pg.mkPen(c("text.primary"), width=tokens.PLOT_REF_WIDTH))
         self.recorded.setBrush(pg.mkBrush(c("state.warning")))
         self.recorded.setSize(tokens.PLOT_SYMBOL_SIZE * 2.5)
