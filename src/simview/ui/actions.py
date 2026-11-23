@@ -8,6 +8,21 @@ from qtpy.QtGui import QAction, QKeySequence
 from qtpy.QtWidgets import QWidget
 
 
+def tooltip_text(text: str, shortcut: QKeySequence | None = None) -> str:
+    """The tooltip for a command: its name, then its shortcut in the platform's own spelling
+    (Ctrl+G here, ⌘G on macOS), per docs/UX_GUIDELINES.md. Menu ellipses and `&` go."""
+    name = text.replace("&", "").removesuffix("…").removesuffix("...").strip()
+    if shortcut is None or shortcut.isEmpty():
+        return name
+    return f"{name} ({shortcut.toString(QKeySequence.SequenceFormat.NativeText)})"
+
+
+def describe_action(action: QAction, tip: str | None = None) -> None:
+    """Tooltip with the shortcut, and a one-line status-bar tip (`tip`, else the name)."""
+    action.setToolTip(tooltip_text(action.text(), action.shortcut()))
+    action.setStatusTip(tip or tooltip_text(action.text()))
+
+
 class ActionRegistry:
     def __init__(self, parent: QWidget) -> None:
         self._parent = parent
@@ -20,7 +35,9 @@ class ActionRegistry:
         callback: Callable[[], object],
         shortcut: str | QKeySequence.StandardKey | None = None,
         category: str = "General",
+        tip: str | None = None,
     ) -> QAction:
+        """`tip`: one sentence on what the action does, shown in the status bar on hover."""
         if action_id in self._actions:
             raise ValueError(f"duplicate action id: {action_id}")
         action = QAction(text, self._parent)
@@ -28,6 +45,7 @@ class ActionRegistry:
         action.setData(category)
         if shortcut is not None:
             action.setShortcut(QKeySequence(shortcut))
+        describe_action(action, tip)
         action.triggered.connect(lambda _checked=False: callback())
         self._parent.addAction(action)
         self._actions[action_id] = action

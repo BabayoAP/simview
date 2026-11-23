@@ -111,6 +111,7 @@ TIMELINE_HEIGHT: Final = 56
 BOTTOM_ROW_HEIGHT: Final = 200
 PLOTS_SHARE: Final = 0.75  # plots vs console width in the bottom row
 PALETTE_WIDTH: Final = 560
+SHORTCUTS_WINDOW: Final = (520, 560)  # Help > Keyboard Shortcuts
 START_WINDOW: Final = (880, 600)
 TEMPLATE_CARD: Final = (180, 150)
 TEMPLATE_GLYPH: Final = 48

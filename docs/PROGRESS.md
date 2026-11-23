@@ -599,6 +599,13 @@ command and the Python API. No new dependencies (stdlib `tomllib`, `xml`, `hashl
 - Hero demo checks run as a suite ✅ (finding above)
 - Tests: 677 pass (offline, 23 skipped), lint clean. Viewport untouched (no GL rerun needed).
 
+## Between milestones: tooltips and help (D-147)
+
+Owner request 2026-11-22, branch `ux-help`: `docs/UX_GUIDELINES.md` (sourced tooltip and help
+rules + checklist), `docs/USER_GUIDE.md` (end-user guide), tooltips with platform-native
+shortcuts on every action, heads-up toolbar tooltips in the 3D view, and a Help menu (Keyboard
+Shortcuts Ctrl+/, User Guide F1). Tests: `tests/ui/test_help.py`, `test_toolbar_tooltips` (GL).
+
 ## Next
 
 1. M10 (PR #4) and M11 (PR #5) approved 2026-11-22 and merged into `main`, CI green on all

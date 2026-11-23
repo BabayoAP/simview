@@ -18,10 +18,10 @@ from typing import Any
 import numpy as np
 import pyvista as pv
 import vtk
-from qtpy.QtCore import QByteArray, QEvent, QObject, Qt, Signal
+from qtpy.QtCore import QByteArray, QEvent, QObject, QPoint, Qt, Signal
 from qtpy.QtGui import QImage, QKeyEvent, QPainter
 from qtpy.QtSvg import QSvgRenderer
-from qtpy.QtWidgets import QVBoxLayout, QWidget
+from qtpy.QtWidgets import QToolTip, QVBoxLayout, QWidget
 
 from simview.ipc.protocol import Description
 from simview.ipc.shm import Frame
@@ -42,6 +42,32 @@ HUD_RATE = 10  # Hz, HUD text refresh
 HUD_ABOVE_SCALE = 0.1  # normalized height of the HUD's bottom edge when the scale bar shows
 CLICK_SLOP = 4  # px a press may move and still count as a click
 TOOLBAR_ICON = 20  # px, heads-up toolbar icon size (2x for high DPI)
+# Heads-up toolbar tooltips (D-147): what each icon does and its key. Toggles add "(on)"/"(off)".
+TOOLBAR_TIPS: dict[str, str] = {
+    "frame_all": "Frame all (A)",
+    "frame_selected": "Frame selected (F)",
+    "preset": "Next view: iso, front, right, top (0 / 1 / 3 / 7)",
+    "display": "Next display mode: shaded + edges, shaded, wireframe",
+    "grid": "Ground grid",
+    "frames": "Body frames (RGB axes)",
+    "trails": "Trails",
+    "ortho": "Orthographic camera",
+    "2d": "2D mode (Tab)",
+    "fly": "Fly mode (W A S D Q E)",
+}
+
+
+def toolbar_rects(width: int, height: int, n: int) -> list[tuple[float, float, float, float]]:
+    """Heads-up toolbar button bounds (x0, x1, y0, y1), VTK pixels (y up), centred at the top."""
+    pad, size = tokens.SPACING[1], TOOLBAR_ICON
+    total = n * size + (n + 1) * pad
+    x0, top = (width - total) / 2, height - pad
+    return [
+        (x0 + pad + i * (size + pad), x0 + pad + i * (size + pad) + size, top - size, top)
+        for i in range(n)
+    ]
+
+
 DISPLAY_MODES = ("shaded+edges", "shaded", "wireframe")
 PRESET_CYCLE = ("iso", "front", "right", "top")
 
@@ -158,9 +184,12 @@ class Viewport(QWidget):
             "MouseWheelBackwardEvent",
         ):
             iren.AddObserver(ev, self._on_mouse, -1.0)  # after widgets (gizmo, ViewCube)
+        # Before the widgets: a button widget aborts the move events over itself (D-147).
+        iren.AddObserver("MouseMoveEvent", self._tip_on_move, 10.0)
         self.plotter.installEventFilter(self)
         self._drag: dict[str, Any] | None = None
         self._last_hover_pick = 0.0
+        self._tip_key: str | None = None  # heads-up toolbar button under the cursor
         self.picker = vtk.vtkCellPicker()
         self.picker.SetTolerance(0.002)
 
@@ -307,6 +336,7 @@ class Viewport(QWidget):
             ("2d", "square", True),
             ("fly", "send", True),
         ]
+        self._toggles = {key for key, _, toggle in specs if toggle}
         off = tokens.color(self.theme, "text.secondary")
         on = tokens.color(self.theme, "accent")
         size = TOOLBAR_ICON * 2
@@ -352,14 +382,48 @@ class Viewport(QWidget):
         total = n * icon + (n + 1) * pad
         x0 = (w - total) / 2
         top = h - pad
-        for i, widget in enumerate(self.buttons.values()):
-            x = x0 + pad + i * (icon + pad)
-            widget.GetRepresentation().PlaceWidget([x, x + icon, top - icon, top, 0, 0])
+        rects = toolbar_rects(w, h, n)
+        for widget, (bx0, bx1, by0, by1) in zip(self.buttons.values(), rects, strict=True):
+            widget.GetRepresentation().PlaceWidget([bx0, bx1, by0, by1, 0, 0])
         pts = self.toolbar_bg.GetMapper().GetInput().GetPoints()
         y0 = top - icon - pad / 2
         for k, (x, y) in enumerate(((x0, y0), (x0 + total, y0), (x0 + total, h), (x0, h))):
             pts.SetPoint(k, x, y, 0)
         pts.Modified()
+
+    def toolbar_key_at(self, x: int, y: int) -> str | None:
+        """The heads-up toolbar button under VTK pixel (x, y), if any."""
+        w, h = self.plotter.render_window.GetSize()
+        rects = toolbar_rects(w, h, len(self.buttons))
+        for key, (x0, x1, y0, y1) in zip(self.buttons, rects, strict=True):
+            if x0 <= x <= x1 and y0 <= y <= y1:
+                return key
+        return None
+
+    def toolbar_tip(self, key: str) -> str:
+        tip = TOOLBAR_TIPS[key]
+        rep = self.buttons[key].GetRepresentation()
+        if key in self._toggles:  # VTK has SetNumberOfStates but no getter
+            tip += " (on)" if rep.GetState() else " (off)"
+        return tip
+
+    def _tip_on_move(self, iren: Any, _event: str) -> None:
+        if self._drag is None and getattr(self, "buttons", None):
+            self._show_toolbar_tip(*iren.GetEventPosition())
+
+    def _show_toolbar_tip(self, x: int, y: int) -> None:
+        """Hovering a heads-up toolbar icon shows its tooltip (VTK widgets have none)."""
+        key = self.toolbar_key_at(x, y)
+        if key == self._tip_key:
+            return
+        self._tip_key = key
+        if key is None:
+            QToolTip.hideText()
+            return
+        h = self.plotter.render_window.GetSize()[1]
+        dpr = self.plotter.devicePixelRatioF() or 1.0
+        pos = self.plotter.mapToGlobal(QPoint(int(x / dpr), int((h - y) / dpr)))
+        QToolTip.showText(pos, self.toolbar_tip(key), self.plotter)
 
     def _sync_toggle_states(self) -> None:
         states = (

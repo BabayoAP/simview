@@ -1328,3 +1328,21 @@ the criteria language). A consistent filter is outside 4σ on some axis ~0.02% o
 fraction-of-time limit because it needs no new criterion type and still names the failing
 window as evidence. Check: the shipped suite (8 samples, seed 0, incl. the old failing sample 2)
 passes 8/8 and a 32-sample run over the same ranges (seed 7) passes 32/32.
+
+**D-147 — Tooltips, Help menu, and the UX guidelines (owner request, between milestones).**
+Owner asked (2026-11-22) for ease-of-use work (tooltips, guides) that follows published
+guidelines, written up as a doc. `docs/UX_GUIDELINES.md` collects the rules from Apple's HIG,
+Microsoft's tooltip guidance, the GNOME HIG, NN/g and WCAG 2.2 SC 1.4.13, narrowed to SimView
+and subordinate to PRD §7. Built on branch `ux-help` (not a milestone, so no §10 row):
+(1) `ActionRegistry.register` sets every action's tooltip to "Name (shortcut)" in the
+platform's spelling and a status tip (optional `tip`); the block editor's hand-written
+"(Ctrl+G)" tooltips, wrong on macOS, now use the same helper; Run and Pause show Space.
+(2) The 3D view's heads-up toolbar (VTK-drawn, so no Qt tooltips) shows a tooltip on hover,
+with on/off for toggles. (3) A Help menu: Keyboard Shortcuts (Ctrl+/, non-modal, filterable,
+built from the live actions plus `help.EXTRA_KEYS` for viewport keys) and SimView User Guide
+(the platform's HelpContents key, F1 / Cmd+?), which opens `docs/USER_GUIDE.md` on GitHub (the
+docs aren't installed with the package). Simplest reading of "guides": a task-based user guide
+and on-demand help, no guided tour (NN/g: tours are mostly skipped). No new dependency.
+Check: `tests/ui/test_help.py` (every action's tooltip has its native shortcut, every
+icon-only button has a tooltip with a scene open, Help menu and shortcuts window) and
+`test_viewport_gl.py::test_toolbar_tooltips`.

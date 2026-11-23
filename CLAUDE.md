@@ -7,6 +7,8 @@ Docs (large: grep or read the section you need, don't load whole files):
   only the requirement sections it names (grep the IDs, e.g. `BD-0`).
 - `docs/DECISIONS.md`: resolved ambiguities, D-001 onward. Grep for a topic or D-number; read
   the tail to find the next free number.
+- `docs/UX_GUIDELINES.md`: tooltip, help, and guidance rules (sourced); check UI changes
+  against its checklist. `docs/USER_GUIDE.md`: the end-user guide; update it with user-facing features.
 
 ## Working rules (PRD §0, short form)
 

@@ -29,13 +29,14 @@ from qtpy.QtWidgets import (
 
 from simview.blocks.graph import SUFFIX as SVD
 from simview.ui import theme
-from simview.ui.actions import ActionRegistry
+from simview.ui.actions import ActionRegistry, tooltip_text
 from simview.ui.blockeditor import BlockEditor
 from simview.ui.command_palette import CommandPalette
-from simview.ui.console.editor import EditorPanel
+from simview.ui.console.editor import RUN_FILE_KEY, RUN_SELECTION_KEY, EditorPanel
 from simview.ui.console.handle import SimHandle
 from simview.ui.console.kernel import ConsoleWidget
 from simview.ui.console.workspace import ArrayViewer, WorkspaceBrowser
+from simview.ui.help import EXTRA_KEYS, ShortcutsDialog, open_user_guide, shortcut_rows
 from simview.ui.panels import EmptyState
 from simview.ui.perception_panels import BevPanel, CamerasPanel, PerceptionHistory
 from simview.ui.plots.panel import PlotPanel
@@ -89,6 +90,9 @@ COMPARE_ATOL, COMPARE_RTOL = 1e-6, 1e-6  # run comparison tolerance in the app (
 RUNS_ENV = "SIMVIEW_RUNS"  # overrides the run folder (default: `runs/` next to the scene file)
 
 UNTITLED = "untitled"
+
+
+MENU_CATEGORIES = ("File", "Simulation", "View", "Panels", "Help")
 
 
 class MainWindow(QMainWindow):
@@ -183,9 +187,16 @@ class MainWindow(QMainWindow):
         reg("file.open_sweep", "Open Sweep Results…", self.open_sweep_dialog, None, "File")
         reg("file.start", "Show Start Screen", self.show_start_screen.emit, None, "File")
         reg("file.open_scene", "Open Scene…", self._open_scene_dialog, "Ctrl+Shift+O", "File")
-        reg("sim.run", "Run", self.run, None, "Simulation")
-        reg("sim.pause", "Pause", self.pause, None, "Simulation")
-        reg("sim.stop", "Stop and Reset", self.stop, None, "Simulation")
+        reg("sim.run", "Run", self.run, None, "Simulation", "Start or resume the simulation.")
+        reg("sim.pause", "Pause", self.pause, None, "Simulation", "Pause; the recording is kept.")
+        reg(
+            "sim.stop",
+            "Stop and Reset",
+            self.stop,
+            None,
+            "Simulation",
+            "Stop, save the run to the runs folder, and reset to t = 0.",
+        )
         reg("sim.toggle", "Run / Pause", self.toggle_run, "Space", "Simulation")
         reg("sim.step", "Step Forward One Tick", self.step, ".", "Simulation")
         reg("sim.step_back", "Step Back One Tick", self.step_back, ",", "Simulation")
@@ -210,6 +221,49 @@ class MainWindow(QMainWindow):
         )
         for name, title, _ in DOCKS:
             reg(f"view.focus.{name}", f"Show {title}", self._focus_dock(name), None, "Panels")
+        reg(
+            "help.shortcuts",
+            "Keyboard Shortcuts",
+            self.show_shortcuts,
+            "Ctrl+/",
+            "Help",
+            "List every keyboard shortcut.",
+        )
+        reg(
+            "help.guide",
+            "SimView User Guide",
+            open_user_guide,
+            QKeySequence.StandardKey.HelpContents,
+            "Help",
+            "Open the user guide in your browser.",
+        )
+        # Space toggles Run / Pause: say so on the Run and Pause buttons too (UX_GUIDELINES).
+        space = QKeySequence("Space")
+        for aid, name in (("sim.run", "Run"), ("sim.pause", "Pause")):
+            self.actions_.get(aid).setToolTip(tooltip_text(name, space))
+        self._shortcuts: ShortcutsDialog | None = None
+
+    def shortcut_groups(self) -> list[tuple[str, list[tuple[str, str]]]]:
+        """Every keyboard shortcut in the app, grouped as in the menus (D-147)."""
+        acts = self.actions_.all()
+        groups = [
+            (cat if cat != "Panels" else "Window", [a for a in acts if a.data() == cat])
+            for cat in MENU_CATEGORIES
+        ]
+        out = [(title, shortcut_rows(a)) for title, a in groups]
+        out.append(("Block Editor", shortcut_rows(self.block_editor.actions_.values())))
+        out.append(
+            ("Script Editor", [("Run File", RUN_FILE_KEY), ("Run Selection", RUN_SELECTION_KEY)])
+        )
+        out.extend((title, list(rows)) for title, rows in EXTRA_KEYS)
+        return out
+
+    def show_shortcuts(self) -> None:
+        if self._shortcuts is None:
+            self._shortcuts = ShortcutsDialog(self.shortcut_groups(), self)
+        self._shortcuts.show()
+        self._shortcuts.raise_()
+        self._shortcuts.activateWindow()
 
     def _geometry(self, mode: str) -> Callable[[], None]:
         return lambda: self.set_geometry_mode(mode)
@@ -270,7 +324,7 @@ class MainWindow(QMainWindow):
         bar = self.menuBar()
         bar.setNativeMenuBar(sys.platform == "darwin")
         by_cat: dict[str, QMenu] = {}
-        for cat in ("File", "Simulation", "View", "Panels"):
+        for cat in MENU_CATEGORIES:
             by_cat[cat] = bar.addMenu(cat if cat != "Panels" else "Window")
         for action in self.actions_.all():
             by_cat[str(action.data())].addAction(action)
@@ -284,6 +338,7 @@ class MainWindow(QMainWindow):
 
         project = QToolButton(tb)
         project.setText("Project")
+        project.setToolTip("New, open, save, and import")
         project.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         menu = QMenu(project)
         for aid in (
@@ -350,6 +405,7 @@ class MainWindow(QMainWindow):
         search.setText(f"{key}  Search…")
         search.setIcon(icon("search"))
         search.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        search.setToolTip(self.actions_.get("palette.open").toolTip())
         search.clicked.connect(lambda _c=False: self.palette_.open())
         tb.addWidget(search)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)

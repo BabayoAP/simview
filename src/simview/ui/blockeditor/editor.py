@@ -23,6 +23,7 @@ from qtpy.QtWidgets import (
 )
 
 from simview.blocks.graph import SUFFIX
+from simview.ui.actions import describe_action
 from simview.ui.blockeditor.canvas import DiagramView, ValueLookup
 from simview.ui.blockeditor.document import Document
 from simview.ui.blockeditor.palette import QuickAdd
@@ -69,16 +70,16 @@ class BlockEditor(QWidget):
             ("undo", "Undo", "undo-2", self.doc.undo, QKeySequence.StandardKey.Undo),
             ("redo", "Redo", "redo-2", self.doc.redo, QKeySequence.StandardKey.Redo),
             None,
-            ("group", "Group into a subsystem (Ctrl+G)", "group", self.group, "Ctrl+G"),
+            ("group", "Group into a subsystem", "group", self.group, "Ctrl+G"),
             (
                 "ungroup",
-                "Ungroup a subsystem (Ctrl+Shift+G)",
+                "Ungroup a subsystem",
                 "ungroup",
                 self.ungroup,
                 "Ctrl+Shift+G",
             ),
             ("up", "Up one level", "corner-left-up", self.doc.up, None),
-            ("fit", "Fit diagram in view (Ctrl+0)", "maximize", self.view.fit, "Ctrl+0"),
+            ("fit", "Fit diagram in view", "maximize", self.view.fit, "Ctrl+0"),
         ]
         for entry in spec:
             if entry is None:
@@ -95,6 +96,7 @@ class BlockEditor(QWidget):
             elif shortcut is not None:
                 act.setShortcut(QKeySequence(shortcut))  # type: ignore[arg-type]
                 act.setShortcutContext(ctx)
+            describe_action(act)  # tooltip shows the shortcut, platform-native (D-147)
             self.addAction(act)
             self.actions_[key] = act
             b = QToolButton(self)
@@ -103,12 +105,13 @@ class BlockEditor(QWidget):
             b.setAutoRaise(True)
             bar.addWidget(b)
             self.buttons[key] = b
-        for key, seq, slot in (
-            ("delete", QKeySequence.StandardKey.Delete, self.delete_selection),
-            ("select_all", QKeySequence.StandardKey.SelectAll, self.select_all),
+        for key, name, seq, slot in (
+            ("delete", "Delete selection", QKeySequence.StandardKey.Delete, self.delete_selection),
+            ("select_all", "Select all", QKeySequence.StandardKey.SelectAll, self.select_all),
         ):
-            act = QAction(key, self)
+            act = QAction(name, self)
             act.setShortcuts(seq)
+            describe_action(act)
             act.setShortcutContext(ctx)
             act.triggered.connect(lambda _c=False, f=slot: f())
             self.addAction(act)

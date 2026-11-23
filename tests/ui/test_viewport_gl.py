@@ -178,6 +178,25 @@ def test_toolbar_toggles(scene_view):
     assert vp.camera().parallel
 
 
+def test_toolbar_tooltips(scene_view):
+    """D-147: every heads-up toolbar icon has a tooltip on hover; toggles show their state."""
+    from simview.ui.viewport.view import TOOLBAR_TIPS, toolbar_rects
+
+    vp, _ = scene_view
+    assert set(vp.buttons) == set(TOOLBAR_TIPS)
+    w, h = vp.plotter.render_window.GetSize()
+    rects = dict(zip(vp.buttons, toolbar_rects(w, h, len(vp.buttons)), strict=True))
+    x0, x1, y0, y1 = rects["2d"]
+    cx, cy = int((x0 + x1) / 2), int((y0 + y1) / 2)
+    assert vp.toolbar_key_at(cx, cy) == "2d"
+    assert vp.toolbar_tip("2d") == "2D mode (Tab) (off)"
+    mouse(vp, "MouseMoveEvent", cx, cy)
+    assert vp._tip_key == "2d"
+    mouse(vp, "MouseMoveEvent", w // 2, h // 2)
+    assert vp._tip_key is None
+    assert vp.toolbar_tip("frame_all") == "Frame all (A)"
+
+
 def test_debug_draws(scene_view):
     """VP-07: lines, arrows, points, text, frames appear; a new set replaces the old one."""
     vp, _ = scene_view
