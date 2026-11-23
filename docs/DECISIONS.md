@@ -1304,3 +1304,17 @@ bound for 1.2 s (14.9–16.1 s), i.e. the EKF is overconfident in strong gusts (
 doesn't cover them). The suite is left strict and the EKF untouched: retuning the template's
 filter changes the hero demo and is the owner's call (PROGRESS, Next). The pytest runs the first
 2 samples, which are mild and pass.
+
+Update (2026-11-22, owner asked to retune the EKF): the tuning sweep (16 seeded samples over the
+same ranges) shows the filter is consistent, not overconfident: with the original settings
+~0.8% of samples are outside 3σ on some axis (theory for 3 axes: 1 − 0.997³ ≈ 0.8%) and the RMS
+of error/σ is ~0.92. Because the filter averages GPS over seconds, its error is slow, so an
+excursion past 3σ lasts ~1–2 s; a "never outside 3σ for more than 1 s" check therefore fails
+now and then even for a perfectly tuned filter. Tried and reverted: a gust term in the process
+noise (no effect on the other failures) and a 0.8 m/s² process-noise floor (hero suite 8/8 but
+1/32 still fails at GPS 1.6 m + gust 2.95 m/s, and route deviation rose to 0.78 m, failing the
+template's 0.6 m test). A first hypothesis (an IMU lag) was wrong: sensors sample at the end of
+the tick (D-091), so the IMU's mean acceleration covers exactly the interval the filter predicts.
+Proposed instead (awaiting the owner): keep the EKF and change the suite's check to one a
+consistent filter passes, e.g. outside 4σ for 1 s, or a fraction-of-time limit.
+

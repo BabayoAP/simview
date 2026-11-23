@@ -602,9 +602,10 @@ command and the Python API. No new dependencies (stdlib `tomllib`, `xml`, `hashl
 
 1. M10 (PR #4) and M11 (PR #5) approved 2026-11-22 and merged into `main`, CI green on all
    jobs (including macOS GL). M12 built on `m12-scenario-tests`, **awaiting approval**.
-   Owner decisions open: (a) retune the Drone Delivery EKF's process noise for gusts so the
-   hero suite's 3σ check passes at gust ~2.8 m/s (D-145), or keep the finding as a demo of
-   the gate; (b) the Mac NF-02/NF-03 benchmark rerun.
+   Approved 2026-11-22; PR #6. Owner asked to retune the EKF for the hero suite's 3σ check:
+   the sweep showed the EKF is consistent and the check is what fails by chance (D-145
+   update); retunes reverted. Open: owner's pick between changing the check (4σ for 1 s, or a
+   fraction-of-time limit; recommended) and an EKF change; the Mac NF-02/NF-03 rerun.
 2. macOS GL CI: the repo is public since 2026-11-20, so Actions runs again. The first run on
    `main` (M7) is green except `gl (macos-latest)`, which crashes (exit 133) in
    `test_scrubbing_redraws_the_real_viewport_within_100_ms`, the only GL test that opens the
