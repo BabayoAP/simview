@@ -27,6 +27,7 @@ class Sim:
         self.tick = 0
         self.draw = DrawList()  # VP-07: shown by the viewport, recorded headless too
         self.params = scene.params  # SC-05: changes take effect on the next tick
+        self.action: object = None  # ML-01: set by the RL env before each step
         self.params.freeze()
         for e in scene.entities.values():
             e.reset()

@@ -4,18 +4,37 @@ from __future__ import annotations
 
 import argparse
 import runpy
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
+from simview.core.params import overrides
 from simview.core.scene import Scene
 from simview.runner.run import run
 
 
-def load_scene(path: str | Path) -> Scene:
-    """Execute a scene file and return its module-level `scene` (a `simview.Scene`)."""
-    namespace = runpy.run_path(str(path), run_name="__simview_scene__")
+def load_scene(
+    path: str | Path,
+    *,
+    params: Mapping[str, Any] | None = None,
+    seed: int | None = None,
+) -> Scene:
+    """Execute a scene file and return its module-level `scene` (a `simview.Scene`).
+
+    `params` replaces the values the file declares (`scene.params.gust = 1.5`) while the file
+    runs, so code that reads them during setup sees the new values (D-106). Naming a parameter
+    the file doesn't declare is an error. `seed` replaces the scene's seed."""
+    with overrides(params or {}) as used:
+        namespace = runpy.run_path(str(path), run_name="__simview_scene__")
     scene = namespace.get("scene")
     if not isinstance(scene, Scene):
         raise TypeError(f"{path} must define a module-level `scene = simview.Scene(...)`")
+    unknown = sorted(set(params or {}) - used)
+    if unknown:
+        known = ", ".join(scene.params) or "none"
+        raise KeyError(f"{path} declares no parameter {', '.join(unknown)} (declared: {known})")
+    if seed is not None:
+        scene.seed = int(seed)
     scene.file = Path(path).resolve()
     return scene
 

@@ -15,7 +15,8 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M6: Console + workspace | ✅ Approved 2026-11-19 | `main` | SC-01–SC-05, IO-02, IO-04 |
 | M7: Block editor | ✅ Approved 2026-11-20 (CI: green except macOS GL, see Next) | `main` | BD-01–BD-08, DS-10 |
 | M8: Sensors + Aero/Vehicles toolboxes | ✅ Approved 2026-11-21 | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
-| M9–M10 | Not started | | see PRD §10 |
+| M9: Monte Carlo + RL | ✅ Approved 2026-11-22 | `m9-monte-carlo-rl` | SE-08, SE-09, DA-05, DA-06, ML-01–ML-04 |
+| M10: Polish + hero demo | In progress | `m10-polish-demo` | NF-01–NF-09, TB-01, TB-02, DS-11 |
 
 ## M1: Skeleton + design system
 
@@ -375,10 +376,70 @@ lidar cloud (blue rings) are visible. At the default camera distance the quadrot
 FPS readout showed 21-22 with the sim running live on this machine, for both templates
 (VP-08's 30 FPS GL test measures rendering alone and passes).
 
+## M9: Monte Carlo + RL (done, awaiting approval)
+
+Plan: (1) analysis functions + sweep runner, (2) results view, (3) `make_env` + VecEnv +
+drone-landing env, (4) training panel + click-to-replay, then the PPO done-when.
+
+- Part 1: `sv.sweep(scene_file, duration, params=..., grid=..., trials=..., workers=...)` runs
+  trials in spawned processes and returns `SweepResults` (one Parquet table: trial, seed,
+  params, metrics, status, error, wall time). Distributions `sv.Uniform`, `sv.Normal`,
+  `sv.Choice`. Scene files declare metrics with `scene.metric(name, fn)`; `load_scene(path,
+  params=, seed=)` overrides parameters at declaration (D-106..D-108). UC-2 declares
+  `delivery_time`, `delivered`, `rms_error`, `max_deviation`. `sv.analysis`: `step_info`,
+  `bode`, `fft`, `psd`, `rmse` on SciPy (DA-05, D-109). `Run[column]` reads one column (D-110).
+  Also fixed CI: the VP-08 GL frame bound is loose under software rendering (on the M8 branch).
+- 50-trial UC-2 Monte Carlo (gust ~ U(0.5, 3) m/s, GPS noise ~ U(0.3, 1.5) m, 60 s each,
+  16 workers on the Windows box): finishes in 272 s, 0 failures, all 3 drones deliver in every
+  trial (22.4-23.0 s), RMS estimation error 0.10-0.43 m (correlation with GPS noise 0.96), max
+  route deviation 0.27-1.02 m. One UC-2 run alone is 1.65x real time on this machine (6.5x on
+  the Mac).
+- Part 2: results view (DA-06, D-111): `ui/sweep_view.py`, opened from File → Open Sweep
+  Results… or `window.open_sweep(...)`. Trials table (sortable, failures in red with the error),
+  histogram of any metric, scatter of the metric against any parameter, selection linked both
+  ways. 5 tests in `tests/ui/test_sweep_view.py`. Checked by eye in both themes on the 50-trial
+  UC-2 sweep (RMS error vs GPS noise: a clean rising line).
+- 471 tests pass after part 2 (Windows, offline: 20 skipped); part 1 added 15 in `tests/runner/test_montecarlo.py`
+  (incl. a 50-trial parallel sweep) and `tests/analysis/` (closed-form checks). Lint clean.
+- Part 3: `sv.make_env` (D-112, D-113) and `sv.make_vec_env` (D-114) in `simview/rl/`, the
+  `rl` extra and CPU-only PyTorch in CI (D-115). Drone Landing template (UC-4): quadrotor with its
+  attitude loop at 100 Hz, policy at 25 Hz commanding acceleration, random start in a 8 x 8 x 4 m
+  box, potential-based shaping, +100 for a soft landing on the pad. Without a policy a PD lander
+  flies it (18/20 soft landings from random starts). One env: about 840 env steps/s.
+- Part 4: training folder, `sv.log_metric`, `sv.rl.sb3_logger()`, episode recording
+  (`record_every=N`), TensorBoard reader, Training panel with click-to-replay (D-116). Fixed the
+  end of a replayed run showing the start state.
+- **Done-when (PPO):** PPO (SB3 defaults except n_steps 256, batch 1024) with 12 subprocess envs,
+  400k steps: 159 s of training on the Windows box, recording every 40th episode per env.
+  Evaluated deterministically on 100 new random starts: **100/100 soft landings**, about 5 s per
+  episode. Training-time success (stochastic policy) reached 88% over the last 100 episodes.
+  In the app, the Training panel showed the run's curves and 72 recorded episodes; clicking one
+  replayed it in the viewport with its trail (checked by eye, both themes).
+- Tests: `tests/rl/test_env.py` (env checker on a custom scene and the template, seeding, step
+  timing, ctx.action, termination on the exact tick, success info, argument errors, headless
+  baseline, subprocess and in-process vec envs, a short PPO run, recording + replayable logs),
+  `tests/rl/test_metrics.py` (event-file reader with a partial record, log tailing, SB3 logger),
+  `tests/ui/test_training_panel.py` (panel follows runs, plots, picks up new episodes and newer
+  runs, restyles; click replays). 486 tests pass (Windows, offline; 20 skipped). Lint clean.
+
+### M9 requirement mapping
+
+| ID | Status | Where / test |
+|---|---|---|
+| SE-08 | ✅ | `runner/montecarlo.py`; `tests/runner/test_montecarlo.py` (50-trial parallel sweep) |
+| SE-09 | ✅ | `rl/vec_env.py`; `test_vec_env_in_subprocesses_is_an_sb3_vec_env` |
+| DA-05 | ✅ | `analysis/`; `tests/analysis/test_analysis.py` |
+| DA-06 | ✅ | `ui/sweep_view.py`; `tests/ui/test_sweep_view.py` + manual check, both themes |
+| ML-01 | ✅ | `rl/env.py`; `test_custom_scene_env_passes_env_checker`, `test_template_env_passes_env_checker` |
+| ML-02 | ✅ | `rl/vec_env.py`; `test_in_process_vec_env_and_a_short_ppo_run` |
+| ML-03 | ✅ | `rl/metrics.py`, `ui/training_panel.py`; `tests/rl/test_metrics.py`, `tests/ui/test_training_panel.py` |
+| ML-04 | ✅ | `record_every`; `test_recorded_episodes_replay_as_runs`, `test_clicking_a_recorded_episode_replays_it` + manual check |
+
+
 ## Next
 
-1. M8 approved 2026-11-21; PR into `main` open for CI. Owner is demoing M8 before M9
-   starts: don't begin M9 until asked.
+1. M9 approved 2026-11-22. M10 (polish + hero demo) in progress on `m10-polish-demo`.
+   M8's PR into `main` is open (the owner merges); M9's PR follows it.
 2. macOS GL CI: the repo is public since 2026-11-20, so Actions runs again. The first run on
    `main` (M7) is green except `gl (macos-latest)`, which crashes (exit 133) in
    `test_scrubbing_redraws_the_real_viewport_within_100_ms`, the only GL test that opens the

@@ -760,3 +760,95 @@ attitude is taken as known (an attitude reference), so the models are linear and
 UKF agree; IMU biases aren't estimated. Process noise is the discrete white-noise acceleration
 model with the accelerometer noise. In the loop (25 s of gusty flight) the position error stays
 inside 3 sigma over 97% of the time and the mean NEES is consistent with 3 degrees of freedom.
+
+**D-106 — How a sweep sets parameters (SE-08).** Scene files read their parameters while they
+build the scene (`Wind(gust_std=p.gust)`), so setting `scene.params` after loading would change
+nothing that was already built. `load_scene(path, params={...}, seed=...)` runs the file with
+overrides: when the file declares a parameter that has an override, the override's value is
+used instead. Naming a parameter the file doesn't declare is an error. A later assignment in the
+file to the same name still wins (the override applies at declaration only).
+
+**D-107 — Sweep metrics are declared in the scene file.** `scene.metric(name, fn)` with
+`fn(run) -> float`. Trials run in spawned processes that load the scene file themselves, so the
+metric functions never have to be pickled (lambdas can't be). `sweep(metrics=...)` can also name
+logged columns (the last value is taken) or pass a dict of picklable callables. A trial that
+raises is a row with `status = "error"` and the message; the sweep carries on.
+
+**D-108 — Sweep plan, seeds, and files.** `params` maps names to constants or distributions
+(`Uniform`, `Normal` with optional clipping, `Choice`); `grid` maps names to value lists and
+every combination runs `trials` times. All samples are drawn up front from `seed`, and trial i
+runs with scene seed `seed + i`, so a sweep repeats exactly whatever the worker count. Results
+go to `runs/sweep-<time>/results.parquet` (params, metrics, status, wall time, sweep metadata in
+the schema); trial logs are dropped unless `keep_logs=True` (a 60 s UC-2 log is about 70 MB).
+`workers=0` runs in-process (debugging). Callers need an `if __name__ == "__main__":` guard.
+
+**D-109 — Analysis definitions (DA-05).** `step_info` follows MATLAB's `stepinfo`: 10-90% rise
+time (interpolated), overshoot in percent of the change, settling time as the last entry into a
+2% band; `initial`/`final` default to the first/last samples, and levels never reached give NaN.
+`bode` takes `(num, den)`, `(A, B, C, D)`, or a `scipy.signal.lti` and returns unwrapped phase
+in degrees. `fft` is the one-sided amplitude spectrum scaled so a sinusoid of amplitude A peaks
+at A; `psd` is Welch's method in units²/Hz. Both need evenly spaced samples. `rmse(a)` alone is
+the RMS of an error signal. They live in `simview/analysis/` (PRD §8.4) and load lazily as
+`sv.analysis`.
+
+**D-110 — `Run[column]` reads one column.** It used to read the whole Parquet file for every
+column; sweep metrics read several columns of large logs, so it now reads only the one asked
+for (same result; unknown names still raise `KeyError`).
+
+**D-111 — Where sweep results open (DA-06).** In their own non-modal window (like the array
+viewer), from File → Open Sweep Results… (also the command palette) or `window.open_sweep(...)`
+with a `SweepResults`, its `results.parquet`, or its folder. A central page or dock would sit
+empty for every scene that isn't swept. The window has the trials table (sortable, numbers
+sort numerically, failed trials in `state.error` with the error as tooltip) and, beside it, a
+histogram of the chosen metric over the finished trials and a scatter of that metric against a
+chosen parameter (or the trial number); selecting a row marks its trial in both, clicking a
+point selects its row. Sweeps run from scripts or the console; the in-process console waits
+for the sweep to finish (the UI is busy meanwhile), so long sweeps belong in a script.
+
+**D-112 — Scenes as Gymnasium envs (ML-01).** `sv.make_env(scene, obs_fn, reward_fn, done_fn,
+**task)` takes a `Scene`, a function that builds one, a scene file, or a template id. A scene file
+can declare its own task with `scene.rl_task(...)` (same keys; arguments to `make_env` override
+it), so `sv.make_env("drone_landing")` works as in UC-4. Each `reset()` builds a fresh `Sim` with
+a scene seed drawn from the env's RNG (so `reset(seed=s)` repeats exactly), then calls
+`reset_fn(sim, rng)` to randomize the start. The policy acts at `rate` Hz (default: every tick;
+it must divide the tick rate); one env step runs that many ticks and stops early on the tick
+`done_fn` turns true. `max_time` truncates. `success_fn` goes to `info["is_success"]` at the end
+of an episode, which SB3 reports as `success_rate`. The observation space is inferred (unbounded
+float32) when not given.
+
+**D-113 — How a policy drives the scene: `ctx.action`.** The env applies the action twice over:
+`act_fn(sim, action)` may return controller-style outputs `{entity: u}` that are applied
+directly, and the action itself is exposed to every scene controller as `ctx.action` (None when
+no policy is attached). Scenes with an inner loop (the quadrotor's attitude controller at
+100 Hz under a 25 Hz policy) read `ctx.action`, and the same scene file runs without a policy:
+the drone-landing controller falls back to a PD lander, so the start-screen card still works.
+
+**D-114 — Parallel envs (SE-09, ML-02).** `sv.make_vec_env(scene, n_envs, seed=, subprocess=True)`
+returns SB3's own `SubprocVecEnv` (spawned processes) or `DummyVecEnv`, each env wrapped in SB3's
+`Monitor`; env i is seeded `seed + i`. It builds the env list itself (not SB3's `make_vec_env`)
+so each env knows its index for recording. A `Scene` object can't be sent to other processes,
+so it is refused there; pass the file, a template id, or a builder function. Without the `rl`
+extra the scene and template still load; `make_env` then raises an ImportError naming the extra.
+
+**D-115 — RL extra and CI.** `pip install simview[rl]` = Gymnasium >= 1.0 and
+Stable-Baselines3 >= 2.3 (PRD §8, which pulls in PyTorch). CI installs CPU-only PyTorch from the
+PyTorch index first, so Linux runners don't download the CUDA wheels. RL tests use
+`pytest.importorskip`, so a dev install without the extra skips them. TensorBoard is not a
+dependency: SimView reads event files with its own small protobuf reader (scalars only, simple
+and tensor values; CRCs are not checked).
+
+**D-116 — Training metrics and episode replay (ML-03, ML-04).** A training run writes to a
+folder `runs/train-<time>/` (`sv.rl.training_dir()`; env worker processes inherit it through
+`SIMVIEW_TRAINING`): `metrics.jsonl` from `sv.log_metric(name, step, value)` and from
+`model.set_logger(sv.rl.sb3_logger())` (all of PPO's scalars), `episodes-<env>.jsonl` with each
+finished episode's return, length, success, and (every `record_every`th episode per env) the
+path of its full tick log under `episodes/`, written as a normal run log with its scene file,
+so the app replays it like any saved run. TensorBoard event files anywhere in the folder are read
+too. The Training panel is a new bottom dock, tabbed with Runs (layout version 4), present
+without a scene; it follows the newest `train-*` folder in the run folder (or one opened by
+hand), rereads the files once a second, plots the checked metrics against the step, and draws
+recorded episodes as large points on the episode-return curve: clicking one replays it. The
+episode step is the env's own step count times the number of envs (close to SB3's global step).
+Also fixed on the way (RI-01, from M5b): the last row of a saved run showed the scene's start
+state, because the timeline's last row means "live"; a saved run has no live state, so its last
+row is drawn.

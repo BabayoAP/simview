@@ -144,3 +144,20 @@ for _d in drones:
         "s",
     )
 scene.log("wind_speed", lambda sim: float(np.linalg.norm(wind.velocity())), "m/s")
+
+
+# -- per-run metrics (Monte Carlo results, SE-08) -------------------------------------------------
+def _delivery_time(run: sv.Run) -> float:
+    """When the last drone made its drop-off (NaN if one never did)."""
+    return float(np.max([run[f"{d.name}_delivered"][-1] for d in drones]))  # NaN wins
+
+
+scene.metric("delivery_time", _delivery_time)
+scene.metric(
+    "delivered", lambda run: sum(np.isfinite(run[f"{d.name}_delivered"][-1]) for d in drones)
+)
+scene.metric(
+    "rms_error",
+    lambda run: sv.analysis.rmse(np.concatenate([run[f"{d.name}_err"] for d in drones])),
+)
+scene.metric("max_deviation", lambda run: max(float(run[f"{d.name}_dev"].max()) for d in drones))

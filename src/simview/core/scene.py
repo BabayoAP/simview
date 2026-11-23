@@ -54,6 +54,11 @@ class Context:
         """Live parameters (SC-05): read them here every call, the console can change them."""
         return self.sim.params
 
+    @property
+    def action(self) -> Any:
+        """The RL policy's latest action (ML-01), or None when the scene isn't run as an env."""
+        return self.sim.action
+
 
 @dataclass
 class Target:
@@ -107,12 +112,36 @@ class Scene:
         # SC-05: live parameters; scalars are logged as `params.<name>` channels.
         self.params = Params(on_declare=self._param_declared)
         self.diagrams: dict[str, Any] = {}  # BD-04/05: name -> blocks.runtime.DiagramRun
+        self.metrics: dict[str, Callable[[Any], float]] = {}  # SE-08: name -> fn(run)
+        self.task: dict[str, Any] | None = None  # ML-01: the scene's RL task, see rl_task()
 
     def _param_declared(self, name: str, value: Value) -> None:
         if isinstance(value, float):
             channel = PREFIX + name
             self.channels[channel] = lambda sim, n=name: float(sim.params[n])
             self.channel_units[channel] = ""
+
+    def metric(self, name: str, fn: Callable[[Any], float]) -> None:
+        """Declare a per-run result (SE-08): `fn(run)` gets the finished `Run` and returns a
+        number, e.g. `scene.metric("delivery_time", lambda run: run["d0_delivered"][-1])`.
+        Monte Carlo sweeps collect every declared metric into their results table."""
+        if not name.isidentifier():
+            raise ValueError(f"metric name {name!r} must be an identifier")
+        if name in self.metrics:
+            raise ValueError(f"metric {name!r} is already declared")
+        self.metrics[name] = fn
+
+    def rl_task(self, **spec: Any) -> None:
+        """Declare how this scene runs as a Gymnasium env (ML-01), so `sv.make_env(path)` needs
+        nothing else. Takes the keyword arguments of `simview.rl.make_env`: `obs_fn`,
+        `reward_fn`, `done_fn`, `action_space`, and optionally `observation_space`, `act_fn`,
+        `rate`, `max_time`, `reset_fn`, `success_fn`."""
+        from simview.rl.spec import TASK_KEYS
+
+        unknown = sorted(set(spec) - TASK_KEYS)
+        if unknown:
+            raise TypeError(f"rl_task() got unknown arguments: {', '.join(unknown)}")
+        self.task = spec
 
     def physics(self) -> World:
         """The scene's MuJoCo world (created on first use, so ODE-only scenes never load it)."""

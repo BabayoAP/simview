@@ -131,6 +131,9 @@ def test_imported_csv_replays_in_the_viewport(qapp, window, tmp_path):
     arm = load_scene(DRAG)["ur5"]
     np.testing.assert_allclose(frame.markers["ur5"], arm.fk(q[k])[:3, 3], atol=1e-9)
     assert np.abs(frame.bodies).sum() > 0  # body poses for the 3D view
+    window.seek(window.history.n - 1)  # the end of a saved run shows its last row (D-116)
+    assert window.sim_view.frame.t == pytest.approx(t[-1])
+    np.testing.assert_allclose(window.sim_view.frame.states["ur5"][:6], q[-1])
 
 
 def test_report_and_compare_from_the_panel(qapp, window):
