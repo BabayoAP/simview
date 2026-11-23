@@ -589,7 +589,7 @@ command and the Python API. No new dependencies (stdlib `tomllib`, `xml`, `hashl
 - ST-01 ✅ `tests/testing/test_scenario_tests.py` (2 params + 3 criteria from TOML and Python,
   same verdicts, evidence windows; bad suites and criteria rejected naming the file and field)
 - ST-02 ✅ planted failure: exit 1, JUnit names the case and criterion, identical twice with 2
-  workers; a passing suite exits 0. Headless on all 3 OSes: CI on the M12 PR.
+  workers; a passing suite exits 0. Headless on all 3 OSes: CI run 45118503163 (manual dispatch) green on Windows, macOS, Linux × 3.11/3.12, plus lint and GL.
 - ST-03 ✅ kp 14 -> 10 worsens settling time ~67%: flagged as `metric drift step#0:
   settling_time`; unchanged model: "baseline: no differences"
 - RP-01 ✅ `tests/runner/test_manifest.py` + the app-run check in `tests/ui/test_runs_session.py`;
