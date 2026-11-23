@@ -582,6 +582,7 @@ command and the Python API. No new dependencies (stdlib `tomllib`, `xml`, `hashl
 - Hero demo checks as a suite (D-145): `templates/drone_delivery/checks.toml`. **Finding:** 7 of
   8 samples pass; at GPS noise 1.38 m + gust 2.78 m/s, d2's EKF error leaves its 3σ bound for
   1.2 s (the filter is overconfident in strong gusts). Left strict; retuning needs the owner's OK.
+  Later shown to be chance (D-145 update); the check is now 4σ for 1 s (D-146), 8/8 pass.
 - Fix found on the way (D-143): RI-05 `compare` treated NaN-vs-number as equal; now a divergence.
 
 ### M12 requirement mapping
@@ -604,8 +605,8 @@ command and the Python API. No new dependencies (stdlib `tomllib`, `xml`, `hashl
    jobs (including macOS GL). M12 built on `m12-scenario-tests`, **awaiting approval**.
    Approved 2026-11-22; PR #6. Owner asked to retune the EKF for the hero suite's 3σ check:
    the sweep showed the EKF is consistent and the check is what fails by chance (D-145
-   update); retunes reverted. Open: owner's pick between changing the check (4σ for 1 s, or a
-   fraction-of-time limit; recommended) and an EKF change; the Mac NF-02/NF-03 rerun.
+   update); retunes reverted. Owner picked changing the check: now 4σ for 1 s (D-146), hero
+   suite 8/8 and a 32-sample run 32/32. Open: the Mac NF-02/NF-03 rerun.
 2. macOS GL CI: the repo is public since 2026-11-20, so Actions runs again. The first run on
    `main` (M7) is green except `gl (macos-latest)`, which crashes (exit 133) in
    `test_scrubbing_redraws_the_real_viewport_within_100_ms`, the only GL test that opens the

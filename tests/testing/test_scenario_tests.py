@@ -232,7 +232,7 @@ def test_baseline_new_failures_and_newly_passing(tmp_path):
 
 
 def test_the_hero_demo_checks_run_as_a_suite(tmp_path):
-    """M12: the hero demo's checks (deliveries, EKF inside 3 sigma, on route) as a suite."""
+    """M12: the hero demo's checks (deliveries, EKF inside 4 sigma, on route) as a suite."""
     from simview.templates import scene_path
 
     suite = load_suite(scene_path("drone_delivery").parent / "checks.toml")

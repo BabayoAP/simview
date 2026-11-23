@@ -1317,4 +1317,14 @@ template's 0.6 m test). A first hypothesis (an IMU lag) was wrong: sensors sampl
 the tick (D-091), so the IMU's mean acceleration covers exactly the interval the filter predicts.
 Proposed instead (awaiting the owner): keep the EKF and change the suite's check to one a
 consistent filter passes, e.g. outside 4σ for 1 s, or a fraction-of-time limit.
+Resolved by D-146.
 
+**D-146 — The hero suite checks the EKF at 4σ for 1 s, not 3σ (M12 follow-up).**
+Owner's pick (2026-11-22) of the two options in D-145: keep the EKF as it is and change the
+check. Each drone's criterion is now `must_not: |err| outside 4σ on any axis for 1 s`; the
+logged bound is 3σ, so the expression is `abs(err) * 3 > bound * 4` (no new signal, no change to
+the criteria language). A consistent filter is outside 4σ on some axis ~0.02% of the time, so a
+1 s stretch there means a real divergence or an overconfident filter, not chance. Chosen over a
+fraction-of-time limit because it needs no new criterion type and still names the failing
+window as evidence. Check: the shipped suite (8 samples, seed 0, incl. the old failing sample 2)
+passes 8/8 and a 32-sample run over the same ranges (seed 7) passes 32/32.
