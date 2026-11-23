@@ -94,7 +94,7 @@ def test_bodies_follow_frames_and_trails_grow(scene_view):
         vp.update_frame(frame_of(sim))
     after = np.array(vp.entity_actors["cube"][0].user_matrix)
     assert np.linalg.norm(after[:3, 3] - before[:3, 3]) > 0.1
-    assert len(vp.trails["cube"].points) > 10 and vp.trail_actors["cube"].GetVisibility()
+    assert len(vp.trails["cube"].points) > 10 and vp.trail_actor.GetVisibility()
 
 
 def test_click_selects_and_hover_outlines(scene_view, qapp):
@@ -339,8 +339,8 @@ def test_visuals_world_axes_and_trail_style(qapp, tmp_path):
         vp.update_frame(frame_of(sim))
     trail = vp.trails["box"]
     assert trail.seconds == 0.05 and trail.points[-1][0] - trail.points[0][0] <= 0.05
-    want = model.hex_rgb(tokens.color("dark", "state.warning")) / 255.0
-    np.testing.assert_allclose(vp.trail_actors["box"].GetProperty().GetColor(), want, atol=1e-6)
+    rgb = vp.trail_actor.mapper.GetInput().point_data["rgb"]
+    assert (rgb == model.hex_rgb(tokens.color("dark", "state.warning"))).all()
     vp.close_viewport()
     vp.close()
 
