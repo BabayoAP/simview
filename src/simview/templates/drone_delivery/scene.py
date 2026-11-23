@@ -4,10 +4,17 @@ an EKF and flies its route by that estimate, not by the truth.
 
     simview run scene.py --headless --duration 60
 
+Drone d0 is flown by the block diagram `d0_loop.svd` (Diagram tab: IMU + GPS -> EKF -> Route
+follower -> quadrotor, built from `delivery_loop.py`); d1 and d2 by the script below. Both give
+the same flight. Set USE_DIAGRAM = False to fly d0 from the script too.
+
 Plots to try: d0_err_x with d0_bound_x (estimation error inside +-3 sigma), d0_dev (route
 deviation), wind_speed, and d0_delivered (the drop-off time once it's made). The viewport
 shows the routes, every drone's trail, and each estimate's 3-sigma covariance ellipsoid.
 """
+
+import sys
+from pathlib import Path
 
 import numpy as np
 
@@ -16,6 +23,10 @@ from simview.core.scene import Context
 from simview.sensors import GPS, IMU
 
 aero = sv.aero
+USE_DIAGRAM = True  # d0 flies by d0_loop.svd (the hero demo's diagram), else by `flight` below
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import delivery_loop  # noqa: E402 - the diagram's functions, next to this file
 
 scene = sv.Scene(dt=1e-3, seed=0)
 scene.add_ground()
@@ -69,6 +80,7 @@ class Drone:
 
     def __init__(self, name: str) -> None:
         self.name = name
+        self.dt, self.imu_rate = scene.dt, IMU_RATE
         start = (*PADS[name], 1.0)
         self.quad = scene.add_entity(aero.Quadrotor(start, name=name, mass=1.5, wind=wind))
         scene.attach_shape(self.quad, "box", (0.6, 0.6, 0.15), rgba=COLORS[name])
@@ -104,15 +116,16 @@ class Drone:
 
 
 drones = [Drone(name) for name in DROPS]
+scripted = drones[1:] if USE_DIAGRAM else drones  # the ones `flight` flies
 
 
 # -- flight software (edit me) -----------------------------------------------------------------
 @scene.controller(rate=IMU_RATE)
 def flight(t: float, state: sv.Scene, ctx: Context) -> dict[str, np.ndarray]:
     if ctx.tick == 0:
-        for d in drones:
+        for d in scripted:
             d.reset()
-    return {d.name: d.step(t, ctx) for d in drones}
+    return {d.name: d.step(t, ctx) for d in scripted}
 
 
 @scene.controller(rate=20)
@@ -144,6 +157,12 @@ for _d in drones:
         "s",
     )
 scene.log("wind_speed", lambda sim: float(np.linalg.norm(wind.velocity())), "m/s")
+
+# -- d0's loop as a block diagram (after the logs above: they read d0's values before the diagram
+# computes its next sample, the same tick the script would) ----------------------------------------
+if USE_DIAGRAM:
+    delivery_loop.DRONE = drones[0]
+    scene.add_diagram("d0_loop.svd", rate=IMU_RATE)
 
 
 # -- per-run metrics (Monte Carlo results, SE-08) -------------------------------------------------

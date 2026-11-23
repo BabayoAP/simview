@@ -1,0 +1,80 @@
+{
+  "blocks": [
+    {
+      "id": "imu_gps",
+      "params": {
+        "function": "delivery_loop.py:sense"
+      },
+      "pos": [
+        0.0,
+        40.0
+      ],
+      "type": "PythonFunction"
+    },
+    {
+      "id": "ekf",
+      "params": {
+        "function": "delivery_loop.py:ekf"
+      },
+      "pos": [
+        220.0,
+        40.0
+      ],
+      "type": "PythonFunction"
+    },
+    {
+      "id": "route_follower",
+      "params": {
+        "function": "delivery_loop.py:follow"
+      },
+      "pos": [
+        440.0,
+        40.0
+      ],
+      "type": "PythonFunction"
+    },
+    {
+      "id": "quadrotor",
+      "params": {
+        "entity": "d0"
+      },
+      "pos": [
+        660.0,
+        40.0
+      ],
+      "type": "EntityInput"
+    }
+  ],
+  "format": 1,
+  "name": "d0_loop",
+  "wires": [
+    {
+      "from": "imu_gps:0",
+      "to": "ekf:0"
+    },
+    {
+      "from": "imu_gps:1",
+      "to": "ekf:1"
+    },
+    {
+      "from": "imu_gps:2",
+      "to": "ekf:2"
+    },
+    {
+      "from": "imu_gps:3",
+      "to": "ekf:3"
+    },
+    {
+      "from": "ekf:0",
+      "to": "route_follower:0"
+    },
+    {
+      "from": "ekf:1",
+      "to": "route_follower:1"
+    },
+    {
+      "from": "route_follower:0",
+      "to": "quadrotor:0"
+    }
+  ]
+}

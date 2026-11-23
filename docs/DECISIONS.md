@@ -1203,3 +1203,25 @@ proposed as drafts with nothing built until approved. (13) Git history is not re
 this repo now use the GitHub noreply address (repo-local `user.email`). (14) Opening a `.svd` runs
 its Python Function blocks' files; kept, documented in SECURITY.md. (15) IPC keeps signed pickle;
 revisit only if a network mode (VW-33) arrives.
+
+**D-138 — NF-01 measurement (M10).** NF-01's scene is built in `tests/ui/test_viewport_gl.py`
+(`test_nf01_...`): 20 quadrotors with box shapes and trails, a 50k-point cloud, 1280×720 with 4×
+MSAA, the entities moving every frame. On the dev box (GTX 1050 Ti, below the GTX 1660 / M1
+reference) a frame takes ~20 ms (~48 fps): ~14 ms VTK render, ~5 ms rebuilding the 20 trail
+polylines through PyVista, ~2 ms the rest; the 50k cloud costs nothing measurable. A raw-VTK
+polyline builder only saved ~0.05 ms per trail, so it was dropped. The test asserts a 30 fps
+floor (a regression guard) and prints the number; the 60 fps target is checked on reference
+hardware. Gap and next step (needs owner approval, it reshapes the viewport's trail actors):
+merge all trails into one actor with per-point colors.
+
+**D-139 — The hero demo's block diagram (M10).** PRD §10 asks for the UC-2 loop as a block
+diagram. The Drone Delivery template flies d0 by `d0_loop.svd` (Python Function blocks from
+`delivery_loop.py`: IMU + GPS → EKF → route follower → an Entity Input block on the quadrotor);
+d1 and d2 stay on the script controller, so both ways are shown. `USE_DIAGRAM = False` flies d0
+from the script too; a test checks the two give the same flight (1e-9). Each block loads its own
+copy of `delivery_loop.py`, so the drone is passed through the module `scene.py` imports (each
+copy reads it at load time, so several scenes in one process keep their own drone). With no
+drone (the app's Diagram tab) the functions return zeros of the right shapes, so the editor's
+check is clean. The demo video is `docs/media/hero_demo.mp4`, recorded by
+`tools/record_hero_demo.py` from inside the app (widget grabs plus the VTK render, never the
+desktop) with ffmpeg as an external tool, not a dependency.
