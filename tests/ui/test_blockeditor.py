@@ -315,3 +315,28 @@ def test_project_keeps_the_open_diagram(qapp, window, tmp_path):
         assert list(other.block_editor.doc.current.blocks) == ["constant1"]
     finally:
         other.close()
+
+
+def test_a_diagram_opened_while_hidden_is_framed_when_shown(qapp, tmp_path):
+    # A scene opens its diagram while the 3D page is showing: fit when the canvas is shown,
+    # not against the hidden view's placeholder size.
+    path = loop_diagram().save(tmp_path / "loop.svd")
+    e = BlockEditor()
+    e.resize(1000, 600)
+    e.open(path)
+    assert e.view.zoom == 1.0  # nothing fitted yet
+    e.show()
+    qapp.processEvents()
+    rect = e.view.mapFromScene(e.view.scene().itemsBoundingRect()).boundingRect()
+    assert e.view.viewport().rect().contains(rect)
+    assert rect.width() > 0.3 * e.view.viewport().width()  # framed, not a speck
+    e.close()
+    e.deleteLater()
+
+
+def test_the_drone_delivery_loop_has_no_problems_in_the_editor(qapp, editor):
+    from simview.templates import scene_path
+
+    editor.set_entities({"d0": tuple(f"s{i}" for i in range(13))})
+    editor.open(scene_path("drone_delivery").parent / "d0_loop.svd")
+    assert editor.doc.issues == []

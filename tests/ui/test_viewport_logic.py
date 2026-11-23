@@ -80,6 +80,21 @@ def test_trail_keeps_its_length_in_seconds_and_resets():
     assert len(trail.points) == 1 and trail.polyline() is None
 
 
+def test_merged_trails_are_one_mesh_with_per_trail_colors():
+    """NF-01 (D-140): every trail in one polyline mesh, colored per point."""
+    a = np.array([[0, 0, 0], [1, 0, 0], [2, 0, 0]], dtype=float)
+    b = np.array([[0, 1, 0], [0, 2, 0]], dtype=float)
+    red, blue = np.array([255, 0, 0], np.uint8), np.array([0, 0, 255], np.uint8)
+    poly = model.merged_trails([(a, red), (np.zeros((1, 3)), red), (b, blue)])
+    assert poly.n_points == 5 and poly.n_lines == 2
+    np.testing.assert_array_equal(poly.points, np.vstack([a, b]))
+    np.testing.assert_array_equal(poly.lines, [3, 0, 1, 2, 2, 3, 4])
+    rgb = poly.point_data["rgb"]
+    assert (rgb[:3] == red).all() and (rgb[3:] == blue).all()
+    assert model.merged_trails([(np.zeros((1, 3)), red)]) is None
+    assert model.merged_trails([]) is None
+
+
 # -- debug draws (VP-07) -------------------------------------------------------------------------
 def test_draw_geometry_groups_and_resolves_colors():
     draws = [

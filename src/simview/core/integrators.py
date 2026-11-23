@@ -6,7 +6,6 @@ from collections.abc import Callable
 from typing import Literal
 
 import numpy as np
-from scipy.integrate import solve_ivp
 
 Derivative = Callable[[float, np.ndarray, np.ndarray], np.ndarray]
 IntegratorName = Literal["euler", "rk4", "rk45"]
@@ -31,6 +30,8 @@ def rk4(f: Derivative, t: float, x: np.ndarray, u: np.ndarray, dt: float) -> np.
 
 def rk45(f: Derivative, t: float, x: np.ndarray, u: np.ndarray, dt: float) -> np.ndarray:
     """Adaptive Dormand-Prince (SciPy) over one tick; the input is held constant."""
+    from scipy.integrate import solve_ivp  # imported on first use: ~1 s of startup (NF-05)
+
     sol = solve_ivp(
         lambda tt, xx: f(tt, xx, u), (t, t + dt), x, method="RK45", rtol=RK45_RTOL, atol=RK45_ATOL
     )

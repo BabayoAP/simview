@@ -72,10 +72,9 @@ def record_row(
         parts.append(channels)
     parts += [scene[n].position() for n in layout.state.marker_entities]  # type: ignore[misc]
     if layout.state.n_bodies:
-        import mujoco
-
-        m, d = scene.world.model, scene.world.data  # type: ignore[union-attr]
-        mujoco.mj_kinematics(m, d)  # poses of the state just stepped to
+        d = scene.world.data  # type: ignore[union-attr]
+        # poses of the state just stepped to (mocap mirrors too)
+        scene.world.kinematics()  # type: ignore[union-attr]
         parts.append(np.hstack([d.xpos, d.xquat]).ravel())
     return np.concatenate(parts).astype(np.float64)
 

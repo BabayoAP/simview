@@ -487,13 +487,14 @@ class MainWindow(QMainWindow):
         if path:
             self.load_scene(path)
 
-    def load_scene(self, path: str | Path) -> None:
-        """Start a sim process for a scene file and show it."""
+    def load_scene(self, path: str | Path, title: str | None = None) -> None:
+        """Start a sim process for a scene file and show it; `title` names the window (a
+        template's title), else the file name."""
         from simview.ipc.client import SimClient
 
         self.close_scene()
         self.scene_path = Path(path)
-        title = self.scene_path.name
+        title = title or self.scene_path.name
         if self.project is not None:
             title = f"{self.project.name} — {title}"
         self.setWindowTitle(f"SimView — {title}")
@@ -535,8 +536,8 @@ class MainWindow(QMainWindow):
         self.central.setCurrentWidget(self.sim_view)
         self.viewport = self.sim_view
         self.scene_tree = SceneTree()
-        self.inspector = Inspector()
         a = self.actions_.get
+        self.inspector = Inspector(on_empty=a("view.focus.scene_tree").trigger)
         self.timeline = Timeline(
             {
                 "start": a("timeline.start"),

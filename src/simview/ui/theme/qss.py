@@ -6,8 +6,17 @@ from simview.ui.theme import tokens as t
 from simview.ui.theme.tokens import ThemeName
 
 
-def build_qss(theme: ThemeName) -> str:
+def build_qss(
+    theme: ThemeName, combo_arrow: str | None = None, check_mark: str | None = None
+) -> str:
     c = t.COLORS[theme]
+    check = f"image: url({check_mark});" if check_mark else ""
+    arrow = (
+        f"QComboBox::down-arrow {{ image: url({combo_arrow}); "
+        f"width: {t.ICON_SIZE_INLINE}px; height: {t.ICON_SIZE_INLINE}px; }}"
+        if combo_arrow
+        else ""
+    )
     body = t.FONT_SIZE["body"]
     on_accent = c["text.on_accent"]
     return f"""
@@ -85,6 +94,46 @@ QLineEdit {{
     background: {c["bg.app"]};
     selection-background-color: {c["accent.fill"]};
     selection-color: {on_accent};
+}}
+QComboBox {{
+    min-height: {t.CONTROL_HEIGHT - 2 * t.FOCUS_RING}px;
+    padding: 0 {t.SPACING[1]}px;
+    border-radius: {t.RADIUS_CONTROL}px;
+    border: {t.FOCUS_RING}px solid {c["border.subtle"]};
+    background: {c["bg.app"]};
+}}
+QToolBar QComboBox {{
+    min-height: {t.CONTROL_HEIGHT_COMPACT - 2 * t.FOCUS_RING}px;
+}}
+QComboBox::drop-down {{
+    border: none;
+    background: transparent;
+    width: {t.SPACING[3]}px;
+}}
+{arrow}
+QComboBox:focus {{
+    border-color: {c["accent"]};
+}}
+QComboBox QAbstractItemView {{
+    background: {c["bg.elevated"]};
+    border: {t.HAIRLINE}px solid {c["border.subtle"]};
+    selection-background-color: {c["accent.fill"]};
+    selection-color: {on_accent};
+}}
+QCheckBox::indicator, QAbstractItemView::indicator {{
+    width: {t.CHECK_SIZE}px;
+    height: {t.CHECK_SIZE}px;
+    border: {t.HAIRLINE}px solid {c["text.secondary"]};
+    border-radius: {t.RADIUS_CHECK}px;
+    background: {c["bg.app"]};
+}}
+QCheckBox::indicator:checked, QAbstractItemView::indicator:checked {{
+    border-color: {c["accent.fill"]};
+    background: {c["accent.fill"]};
+    {check}
+}}
+QCheckBox::indicator:hover, QAbstractItemView::indicator:hover {{
+    border-color: {c["accent"]};
 }}
 QLabel[role="secondary"] {{
     color: {c["text.secondary"]};

@@ -47,6 +47,10 @@ for _cls in (
 
 
 def block_class(type_name: str) -> type[Block]:
+    if type_name not in BLOCKS:
+        from simview.toolboxes.registry import discover
+
+        discover()  # an installed toolbox may provide it (TB-02)
     try:
         return BLOCKS[type_name]
     except KeyError:

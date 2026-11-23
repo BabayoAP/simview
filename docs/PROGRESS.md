@@ -14,9 +14,10 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M5b: Run investigation (PRD 1.2) | ✅ Approved 2026-11-19 | `main` | RI-01–RI-06 |
 | M6: Console + workspace | ✅ Approved 2026-11-19 | `main` | SC-01–SC-05, IO-02, IO-04 |
 | M7: Block editor | ✅ Approved 2026-11-20 (CI: green except macOS GL, see Next) | `main` | BD-01–BD-08, DS-10 |
-| M8: Sensors + Aero/Vehicles toolboxes | ✅ Approved 2026-11-21 | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
-| M9: Monte Carlo + RL | ✅ Approved 2026-11-22 | `m9-monte-carlo-rl` | SE-08, SE-09, DA-05, DA-06, ML-01–ML-04 |
-| M10: Polish + hero demo | In progress | `m10-polish-demo` | NF-01–NF-09, TB-01, TB-02, DS-11 |
+| M8: Sensors + Aero/Vehicles toolboxes | ✅ Approved 2026-11-21, merged into `main` (PR #2) | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
+| M9: Monte Carlo + RL | ✅ Approved 2026-11-22, merged into `main` (PR #3) | `m9-monte-carlo-rl` | SE-08, SE-09, DA-05, DA-06, ML-01–ML-04 |
+| M10: Polish + hero demo | Done, awaiting approval | `m10-polish-demo` | NF-01–NF-09, TB-01, TB-02, DS-11 |
+| M11: Vision world model (PRD 1.4) | Planned, after M10 (D-121) | `m11-vision-world-model` | VW-01–VW-11 |
 
 ## M1: Skeleton + design system
 
@@ -376,7 +377,7 @@ lidar cloud (blue rings) are visible. At the default camera distance the quadrot
 FPS readout showed 21-22 with the sim running live on this machine, for both templates
 (VP-08's 30 FPS GL test measures rendering alone and passes).
 
-## M9: Monte Carlo + RL (done, awaiting approval)
+## M9: Monte Carlo + RL (approved 2026-11-22)
 
 Plan: (1) analysis functions + sweep runner, (2) results view, (3) `make_env` + VecEnv +
 drone-landing env, (4) training panel + click-to-replay, then the PPO done-when.
@@ -436,10 +437,84 @@ drone-landing env, (4) training panel + click-to-replay, then the PPO done-when.
 | ML-04 | ✅ | `record_every`; `test_recorded_episodes_replay_as_runs`, `test_clicking_a_recorded_episode_replays_it` + manual check |
 
 
+## M10: Polish + hero demo (approved 2026-11-22)
+
+Plan: (1) performance pass against NF-01–NF-07 with a rerunnable benchmark, (2) TB-01/TB-02
+and DS-11 checks, (3) design QA of every panel in both themes, (4) README with GIFs and
+`docs/ARCHITECTURE.md`, (5) the hero demo recording.
+
+- Part 1 (performance): `benchmarks/nf_bench.py` measures NF-02, NF-03, NF-05, NF-06, NF-07
+  (how, D-117). Changes (D-118): static MuJoCo worlds skip `mj_step`; a float RK4 fast path
+  for `Quadrotor` (bit-identical); scalar attitude controller, `quat_matrix`, `rot_log`;
+  cached name lookups and state slots; lazy SciPy import. Windows box (i7-10700K, Python
+  3.13), before -> after:
+
+  | Target | Required | Before | After |
+  |---|---|---|---|
+  | NF-02 UC-3 arm RTF, dt 1 ms | >= 20x | 6.0x | 9.5x |
+  | NF-03 UC-2 RTF, dt 1 ms | >= 10x | 1.6x | 3.8x |
+  | NF-05 cold start | <= 4 s | | start screen 2.0 s, main window 2.6 s ✅ |
+  | NF-06 determinism | 1 log | | 10 runs, 1 distinct log ✅ |
+  | NF-07 10 min UC-2 memory | <= 2 GB | | peak 1055 MB ✅ |
+
+  This machine ran UC-2 at 1.65x where the Mac ran 6.5x (M8), so the Mac (reference
+  hardware) should now clear NF-03; **rerun `python benchmarks/nf_bench.py` on the Mac** to
+  confirm. NF-02's floor here: MuJoCo's step alone is 45x, SimView's tick without user code
+  about 26x; the rest is the example's 100 Hz IK controller and the end-effector FK it logs
+  every tick.
+- Part 2 (TB-01, TB-02, DS-11): toolbox discovery through the `simview.toolboxes` entry point
+  (D-119): `simview/toolboxes/registry.py`, the built-ins registered through it
+  (`toolboxes/builtin.py`, entry points in pyproject.toml), toolbox blocks / entity types /
+  sensors / templates / `sv.<module>`, broken toolboxes reported instead of crashing.
+  Tests: `tests/toolboxes/test_registry.py` (fake toolboxes installed as real distributions).
+  DS-11 (D-120): `tests/ui/test_shortcuts.py` checks the §7.8 table; it found that Redo had no
+  Ctrl+Shift+Z on Windows (fixed). TB-01 ✅ TB-02 ✅ DS-11 ✅ (Ctrl+1–4 presets are DS-12, v1).
+- Part 3 (design QA, in progress, 2026-11-22): screenshots of the start screen, empty window,
+  palette, every template (3D view, diagram, Runs) in both themes, taken with the main-window
+  screen grab. Found and fixed: the ViewCube used VTK's default axis colors (Y yellow, Z green),
+  against §7.3's fixed X red / Y green / Z blue; it and the triad now use `AXIS_COLORS`. The
+  Inspector's "select an entity" text was a clipped label with a horizontal scrollbar once a
+  scene loaded; it is now the same empty state (icon, hint, Show Scene Tree) as before loading
+  (§7.8). The Robotic Arm (UR5) card opened an empty window: `templates/ur5_ik/scene.py` is new
+  (the UC-3 drag scene, also kept as `examples/ur5_ik_drag.py`), so all 4 flagship cards open a
+  scene (`tests/templates/test_ur5_ik.py`), and template windows keep the template's title
+  instead of "scene.py". Second screen pass (2026-11-22, screen unlocked, every template in both themes): the ViewCube and triad show X red / Y green / Z blue. The light-theme speed combo box had no frame because combo boxes had no stylesheet rule and the native fill matched the toolbar; `QComboBox` now has the `QLineEdit` frame from tokens, and since a styled combo box loses Qt's native arrow, the theme writes a tinted Lucide `chevron-down` to a temp file for `::down-arrow` (new token `ICON_SIZE_INLINE`; `tests/ui/test_tokens.py`). GL tests pass on the real display (18, run on the M11 branch, which includes this one). Sweep view and Training panel checked with data (24-trial sweep with 8 failures; 25 drone landing episodes, 5 recorded): the sweep view is fine in both themes. Training panel fixes: unchecked metric boxes were near-invisible in the light theme (native indicator, white on white), so check boxes and item-view indicators now get a `text.secondary` border and an accent-filled checked state with a tinted Lucide check (`CHECK_SIZE`, `RADIUS_CHECK`); its legend sat on the curve, so it now follows §7.6 like the Plots panel (top right, only for 2+ curves, one curve named by a short axis label; `LEGEND_ALPHA` replaces the Plots panel's hard-coded 200). Tests in `tests/ui/test_tokens.py` and `tests/ui/test_training_panel.py`. M8 (PR #2) and M9 (PR #3) merged into `main` 2026-11-22; CI green except the known macOS GL exit 133 after all GL tests pass. Part 3 is done.
+- Part 4 (2026-11-22): `docs/ARCHITECTURE.md` (processes, tick order, logging and runs, sim/UI transport, UI structure, batch runs, toolboxes, tests; checked against the code) and README GIFs in `docs/media/` recorded from the running app with the screen-grab recipe: Drone Delivery full window with one drone's EKF error vs its bound (1.3 MB) and the AV template's 3D view (1.3 MB). README status updated (it still said M5b). Next: part 5, the hero demo recording (§10: fleet + trails + wind + covariance, the loop's block diagram, error vs ±3σ plots, a 50-trial Monte Carlo histogram; 60–90 s).
+- Part 5 (2026-11-22, hero demo, D-139): Drone Delivery's d0 now flies by a block diagram,
+  `templates/drone_delivery/d0_loop.svd` (IMU + GPS → EKF → route follower → quadrotor, Python
+  Function blocks from `delivery_loop.py`); d1/d2 stay on the script. Diagram and script fly d0
+  identically (`tests/templates/test_drone_delivery_diagram.py`, 1e-9). A 50-trial sweep (GPS
+  noise 0.4–1.6 m, gusts 0.5–3 m/s): 50/50 runs, every drone delivered, delivery time
+  22.4–23.0 s. The video `docs/media/hero_demo.mp4` (78 s, 1.4 MB) is recorded by
+  `tools/record_hero_demo.py`: fleet with trails, wind and routes; a follow camera on d0 with its
+  3σ ellipsoid and the live error vs ±3σ plot; the Diagram tab; the sweep view's delivery-time
+  histogram. Found while recording: a diagram opened while the Diagram page was hidden was fitted
+  to the hidden view and showed as a speck; the canvas now fits when it's first shown
+  (`tests/ui/test_blockeditor.py`).
+- NF-01 (D-138): new GL test with the target scene; ~48 fps on this box's GTX 1050 Ti (below the
+  GTX 1660 reference). Documented gap: trails cost ~5 ms per frame; merging them into one actor
+  is the proposed fix (needs approval). Approved with M10; done (D-140): one trail actor with
+  per-point colors, median frame 10.4 ms (~96 fps). 510 tests + 17 GL pass, lint clean.
+
+### M10 requirement mapping
+
+- NF-01 ✅ trails merged into one actor (D-140, approved): ~96 fps on the GTX 1050 Ti (was 48); 30 fps regression test
+- NF-02 ⚠️ 9.5x vs 20x on this box; rerun `benchmarks/nf_bench.py` on the Mac (reference)
+- NF-03 ⚠️ 3.8x here (was 1.65x, Mac was 6.5x before the pass); Mac rerun pending
+- NF-04 ✅ (M4 IPC test) · NF-05 ✅ 2.6 s · NF-06 ✅ · NF-07 ✅ 1055 MB · NF-08 ✅ CI on Windows,
+  macOS, Linux · NF-09 ✅ core coverage ≥80% in CI
+- TB-01 ✅ TB-02 ✅ DS-11 ✅
+- Design QA ✅ (part 3) · README GIFs + `docs/ARCHITECTURE.md` ✅ (part 4) · hero demo ✅ (part 5)
+- Tests: 509 pass (offline, 20 skipped) + 17 GL tests, lint clean.
+
+- After part 1: 486 tests pass (offline: 20 skipped), 16 GL tests pass, lint clean. The DA-01 plot timing test
+  (`test_ten_signals_of_100k_samples_redraw_at_30_fps`, median ~25 ms vs 33 ms) failed once
+  under full-suite load and passed on rerun.
+
 ## Next
 
-1. M9 approved 2026-11-22. M10 (polish + hero demo) in progress on `m10-polish-demo`.
-   M8's PR into `main` is open (the owner merges); M9's PR follows it.
+1. M10 approved 2026-11-22 (with the NF-01 trail merge, D-140); merged into `main`. Open: the
+   Mac NF-02/NF-03 rerun.
 2. macOS GL CI: the repo is public since 2026-11-20, so Actions runs again. The first run on
    `main` (M7) is green except `gl (macos-latest)`, which crashes (exit 133) in
    `test_scrubbing_redraws_the_real_viewport_within_100_ms`, the only GL test that opens the

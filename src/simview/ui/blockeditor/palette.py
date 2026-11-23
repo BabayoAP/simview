@@ -17,6 +17,9 @@ SUBSYSTEM_DOC = (
 
 def entries() -> list[tuple[str, str, str]]:
     """(type, category, doc) for every block, in §7.7 category order, then by name."""
+    from simview.toolboxes.registry import discover
+
+    discover()  # toolbox blocks (TB-02)
     order = {c: i for i, c in enumerate(CATEGORIES)}
     out = [(name, cls.category, cls.doc) for name, cls in BLOCKS.items()]
     out.sort(key=lambda e: (order[e[1]], e[0]))

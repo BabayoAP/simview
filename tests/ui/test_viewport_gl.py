@@ -94,7 +94,7 @@ def test_bodies_follow_frames_and_trails_grow(scene_view):
         vp.update_frame(frame_of(sim))
     after = np.array(vp.entity_actors["cube"][0].user_matrix)
     assert np.linalg.norm(after[:3, 3] - before[:3, 3]) > 0.1
-    assert len(vp.trails["cube"].points) > 10 and vp.trail_actors["cube"].GetVisibility()
+    assert len(vp.trails["cube"].points) > 10 and vp.trail_actor.GetVisibility()
 
 
 def test_click_selects_and_hover_outlines(scene_view, qapp):
@@ -339,8 +339,8 @@ def test_visuals_world_axes_and_trail_style(qapp, tmp_path):
         vp.update_frame(frame_of(sim))
     trail = vp.trails["box"]
     assert trail.seconds == 0.05 and trail.points[-1][0] - trail.points[0][0] <= 0.05
-    want = model.hex_rgb(tokens.color("dark", "state.warning")) / 255.0
-    np.testing.assert_allclose(vp.trail_actors["box"].GetProperty().GetColor(), want, atol=1e-6)
+    rgb = vp.trail_actor.mapper.GetInput().point_data["rgb"]
+    assert (rgb == model.hex_rgb(tokens.color("dark", "state.warning"))).all()
     vp.close_viewport()
     vp.close()
 
@@ -390,3 +390,44 @@ def test_scrubbing_redraws_the_real_viewport_within_100_ms(qapp, settings):
     finally:
         w.close_scene()
         w.close()
+
+
+def test_nf01_twenty_entities_and_a_50k_cloud_frame_time(qapp):
+    """NF-01: a 20-entity scene with a 50k-point cloud; entities move every frame. The 60 fps
+    target is for the reference GPU (GTX 1660 / M1); this dev box's GTX 1050 Ti does ~48 fps, so
+    the test is a 30 fps regression floor and prints the number (D-138)."""
+    import simview as sv
+    from simview.ui.viewport.view import Viewport
+
+    scene = sv.Scene(dt=1e-3)
+    scene.add_ground()
+    for i in range(20):
+        quad = scene.add_entity(sv.aero.Quadrotor((i % 5 * 2.0, i // 5 * 2.0, 1.0), name=f"q{i}"))
+        scene.attach_shape(quad, "box", (0.6, 0.6, 0.15))
+        scene.trail(f"q{i}", seconds=5.0)
+    sim = Sim(scene)
+    vp = Viewport("dark")
+    vp.resize(1280, 720)
+    vp.show()
+    qapp.processEvents()
+    vp.load(describe(scene))
+    cloud = np.random.default_rng(2).uniform(-5, 5, size=(50_000, 3)).astype(np.float32)
+    vp.set_draws([("cloud", (), "accent", 2.0, "", cloud)])
+    for _ in range(5):  # warm up
+        sim.step()
+        vp.update_frame(frame_of(sim))
+        vp.render()
+    times = []
+    for _ in range(60):
+        for _ in range(16):  # ~one 60 Hz frame of sim time
+            sim.step()
+        frame = frame_of(sim)
+        start = time.perf_counter()
+        vp.update_frame(frame)
+        vp.render()
+        times.append(time.perf_counter() - start)
+    vp.close_viewport()
+    vp.close()
+    print(f"NF-01 median frame {np.median(times) * 1e3:.1f} ms")
+    budget = 1 / 30 if not os.environ.get("CI") else 0.15  # CI renders in software
+    assert np.median(times) < budget, f"median frame {np.median(times) * 1e3:.1f} ms"

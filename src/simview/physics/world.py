@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import mujoco
 import numpy as np
@@ -164,6 +164,8 @@ class World:
     # D-090: custom-model entities with a solid that follows their pose (mocap bodies)
     proxies: list[tuple[Entity, Shape]] = field(default_factory=list)
     _mocap: list[tuple[Entity, int]] = field(default_factory=list)
+    _slots: list[tuple[Entity, int, Any, Any]] = field(default_factory=list)
+    _robots: list[Any] = field(default_factory=list)
     t: float = 0.0
     _model: mujoco.MjModel | None = None
     _data: mujoco.MjData | None = None
@@ -251,12 +253,31 @@ class World:
         self._model, self._data = model, mujoco.MjData(model)
         for m in self.members:
             m.bind(model)  # type: ignore[attr-defined]
+        self._bind_slots()
         self._mocap = [
             (e, mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, e.name)) for e, _ in self.proxies
         ]
         for fn in self._on_compile:
             fn(model)
         return model
+
+    def _bind_slots(self) -> None:
+        """Per member: where its qpos / qvel live, as slices when contiguous (they always are
+        for MuJoCo joints of one body tree), which copy several times faster than index
+        arrays on every tick (NF-02)."""
+
+        def slot(idx: np.ndarray) -> slice | np.ndarray:
+            if len(idx) and np.array_equal(idx, np.arange(idx[0], idx[0] + len(idx))):
+                return slice(int(idx[0]), int(idx[0]) + len(idx))
+            return idx
+
+        from simview.physics.mujoco_world import Robot
+
+        self._slots = [
+            (e, len(e.qidx), slot(e.qidx), slot(e.vidx))  # type: ignore[attr-defined]
+            for e in self.members
+        ]
+        self._robots = [m for m in self.members if isinstance(m, Robot)]
 
     @property
     def model(self) -> mujoco.MjModel:
@@ -279,10 +300,11 @@ class World:
 
     def load_state(self) -> None:
         m, d = self.model, self.data
-        for e in self.members:
-            nq = len(e.qidx)  # type: ignore[attr-defined]
-            d.qpos[e.qidx] = e.x[:nq]  # type: ignore[attr-defined]
-            d.qvel[e.vidx] = e.x[nq:]  # type: ignore[attr-defined]
+        qpos, qvel = d.qpos, d.qvel
+        for e, nq, qs, vs in self._slots:
+            x = e.x
+            qpos[qs] = x[:nq]
+            qvel[vs] = x[nq:]
         for e, bid in self._mocap:
             pose = e.pose()
             mid = int(m.body_mocapid[bid])
@@ -295,19 +317,22 @@ class World:
         mujoco.mj_kinematics(self.model, self.data)
 
     def step(self, t: float, dt: float) -> None:
-        from simview.physics.mujoco_world import Robot
-
         m, d = self.model, self.data
+        if m.nv == 0:
+            # Only static geometry and mocap mirrors: nothing to integrate. Mocap poses are
+            # loaded when something reads them (`kinematics()`: ray casts, viewport) (NF-03).
+            self.t = t + dt
+            return
         m.opt.timestep = dt
         self.t = t
         self.load_state()
         d.qfrc_applied[:] = 0.0
-        for r in self.members:
-            if isinstance(r, Robot):
-                r.apply_inputs(d, t)
+        for r in self._robots:
+            r.apply_inputs(d, t)
         mujoco.mj_step(m, d)
-        for e in self.members:
-            e.x = np.concatenate([d.qpos[e.qidx], d.qvel[e.vidx]])  # type: ignore[attr-defined]
+        qpos, qvel = d.qpos, d.qvel
+        for e, _, qs, vs in self._slots:
+            e.x = np.concatenate((qpos[qs], qvel[vs]))
         self.t = t + dt
 
     def robots(self) -> list[Robot]:

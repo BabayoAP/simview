@@ -72,7 +72,9 @@ class Server:
     def load(self) -> bool:
         from simview.core.scheduler import Sim
         from simview.runner.headless import load_scene
+        from simview.toolboxes.registry import discover
 
+        discover()  # TB-01: the sim process finds installed toolboxes too
         self.running = False
         try:
             scene = load_scene(Path(self.scene_path))
@@ -147,10 +149,8 @@ class Server:
         scene, sim = self.scene, self.sim
         bodies = None
         if scene.world is not None:
-            import mujoco
-
-            m, d = scene.world.model, scene.world.data
-            mujoco.mj_kinematics(m, d)  # poses of the state just stepped to
+            d = scene.world.data
+            scene.world.kinematics()  # poses of the state just stepped to (mocap included)
             bodies = np.hstack([d.xpos, d.xquat])
         if self._rows:
             rows, self._rows = np.vstack(self._rows), []

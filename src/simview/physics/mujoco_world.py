@@ -276,13 +276,21 @@ class Robot(Entity):
 
     # -- driving (RB-05) --------------------------------------------------------------------
     def _actuator_for(self, joint: str) -> int:
-        """Index into `u` of the servo driving `joint`."""
+        """Index into `u` of the servo driving `joint` (cached per compiled model)."""
         m = self.model
+        cache = self.__dict__.get("_actuator_cache")
+        if cache is None or cache[0] is not m:
+            cache = (m, {})
+            self.__dict__["_actuator_cache"] = cache
+        hit = cache[1].get(joint)
+        if hit is not None:
+            return hit
         jid = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, self.full(joint))
         if jid < 0:
             raise KeyError(f"{self.name} has no joint named {joint!r}")
         for k, a in enumerate(self.act_ids):
             if m.actuator_trntype[a] == mujoco.mjtTrn.mjTRN_JOINT and m.actuator_trnid[a, 0] == jid:
+                cache[1][joint] = k
                 return k
         raise KeyError(
             f'joint {joint!r} of {self.name} has no actuator: add servos="position" to '

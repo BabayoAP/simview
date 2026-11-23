@@ -852,3 +852,97 @@ episode step is the env's own step count times the number of envs (close to SB3'
 Also fixed on the way (RI-01, from M5b): the last row of a saved run showed the scene's start
 state, because the timeline's last row means "live"; a saved run has no live state, so its last
 row is drawn.
+
+**D-117 — How the NF targets are measured (M10).** `benchmarks/nf_bench.py` runs each check in
+a fresh child process. NF-02: `examples/ur5_pick.py` (the UC-3 arm with its IK controller and
+logged channel) with `dt` set to 1 ms, 10 s headless. NF-03: the UC-2 template, 30 s headless.
+RTF is simulated time over the wall time of the tick loop (`Run.rtf`), not counting scene
+loading or the Parquet write. NF-05: "usable" means the window is shown and the Qt event loop
+is running (the first zero-delay timer fires), timed from the process's creation, so the
+interpreter start and every import count; both the start screen and an empty main window are
+measured, best of 3 after one warm-up launch. NF-06: 10 UC-2 runs of 5 s, SHA-256 of each
+Parquet file. NF-07: peak resident memory of a UC-2 run with its full log; `--full` runs the
+10 minutes, the quick mode extrapolates a 60 s run linearly (the log array is preallocated, so
+it grows linearly with the duration). The reference hardware is the GTX 1660 / M1 class named
+in NF-01; the Windows dev box (i7-10700K, GTX 1050 Ti, Python 3.13) is slower on single-threaded Python, so
+its numbers are a lower bound and the Mac's are the ones the targets are judged on.
+
+**D-118 — Performance changes (M10, NF-02, NF-03).** No public API changes. (1) A MuJoCo world
+with no degrees of freedom (only static shapes and the mocap mirrors of custom entities, as in
+UC-1 and UC-2) skips `mj_step`; mocap poses are loaded when something reads them
+(`World.kinematics()`, now also called by the viewport and recorder before they read body poses).
+(2) `Quadrotor` integrates RK4 on Python floats when its integrator is `rk4` and `derivative`
+isn't overridden, reading the input and the wind once per tick (they are constant across the
+stages); results are bit-identical to the generic integrator. (3) The attitude controller,
+`quat_matrix`, and `se3.rot_log` use scalar closed forms (SciPy kept for rotations near pi);
+results match within 1e-13. (4) Cached lookups: state indices by name, a robot's frame and
+actuator ids (per compiled model), the nav filter's F and Q (per dt), each world member's qpos
+and qvel slots as slices. (5) `fk` skips MuJoCo's centre-of-mass pass (only Jacobians and
+dynamics need it). (6) SciPy's integrator is imported on first RK45 use (about 1 s of startup).
+
+
+**D-119 — Toolboxes (TB-01, TB-02).** A toolbox declares an entry point in the group
+`simview.toolboxes` whose value is a function `register(tb)`; `tb` (`simview.toolboxes.registry.
+Toolbox`) has `add_block(cls)`, `add_entity(cls)`, `add_sensor(cls)`, `add_template(id, title,
+description, scene, icon)` and `add_module(name, module)`. Entities, sensors and modules may be
+"module:attr" strings, imported on first use, so discovery stays cheap at startup (NF-05).
+SimView's robotics, aero and vehicles toolboxes register the same way (`simview.toolboxes.
+builtin`, declared in pyproject.toml as §8's layout says) but are also loaded directly, so a
+source checkout works without a reinstall. Discovery runs once at app startup and in the sim
+process, and lazily on the first unknown block type, template, or `sv.<name>`. What each kind
+plugs into: blocks go in the block library under one of the §7.7 categories (so the theme's
+category colors stay complete); modules become `simview.<name>` (SimView's own names can't be
+shadowed); sensors are also `simview.sensors.<Name>`; templates become start-screen cards after
+the 4 flagship ones (scene paths relative to the toolbox's package; unknown icons fall back to
+`box`); entity types are listed by `registry.entity_types()` (what TB-03's v1 manager panel will
+show). A toolbox that fails to import or register, or takes a name already used, is recorded in
+`registry.toolboxes()` with its error and skipped; SimView still starts. Test toolboxes are real
+installed distributions (`.dist-info` with `entry_points.txt` on `sys.path`).
+
+**D-120 — Keyboard shortcuts (DS-11).** §7.8's Ctrl/Cmd+1–4 switch workspace presets, which are
+DS-12 (v1); until then Ctrl+1 / Ctrl+2 switch the 3D view and the diagram (D-082). Undo/redo
+cover the block editor; the inspector is read-only and the viewport has no persistent scene edits
+yet, so there is nothing else to undo. The editor's standard shortcuts now bind every platform
+key (`setShortcuts`): before, Redo only got its first binding, which is Ctrl+Y on Windows, so
+§7.8's Ctrl+Shift+Z did nothing there.
+
+**D-121 — Vision world model (PRD 1.4, owner request 2026-11-22).** The owner asked for camera-based
+3D perception "similar to what Tesla has done", built on input/output streams. Read as: surround
+cameras → depth → a fused 3D occupancy grid and BEV map that controllers drive from (Tesla's
+occupancy-network idea, done geometrically rather than learned, since the simulator gives depth and
+poses; the learned version is VW-30). Streams run inside the scheduler tick so runs stay
+deterministic (§8.5). Owner's choices: the milestone is **M11, after M10** is finished; MVP inputs
+are **simulated cameras and recorded image/depth datasets only**, with no new dependency; webcam
+and video files (VW-20, would need opencv) and depth from plain RGB (VW-21) are v1. The existing
+SN-02 camera already measures metric depth, so VW-01 reuses it rather than waiting for SN-04.
+
+
+**D-138 — NF-01 measurement (M10).** NF-01's scene is built in `tests/ui/test_viewport_gl.py`
+(`test_nf01_...`): 20 quadrotors with box shapes and trails, a 50k-point cloud, 1280×720 with 4×
+MSAA, the entities moving every frame. On the dev box (GTX 1050 Ti, below the GTX 1660 / M1
+reference) a frame takes ~20 ms (~48 fps): ~14 ms VTK render, ~5 ms rebuilding the 20 trail
+polylines through PyVista, ~2 ms the rest; the 50k cloud costs nothing measurable. A raw-VTK
+polyline builder only saved ~0.05 ms per trail, so it was dropped. The test asserts a 30 fps
+floor (a regression guard) and prints the number; the 60 fps target is checked on reference
+hardware. Gap and next step (needs owner approval, it reshapes the viewport's trail actors):
+merge all trails into one actor with per-point colors.
+
+**D-139 — The hero demo's block diagram (M10).** PRD §10 asks for the UC-2 loop as a block
+diagram. The Drone Delivery template flies d0 by `d0_loop.svd` (Python Function blocks from
+`delivery_loop.py`: IMU + GPS → EKF → route follower → an Entity Input block on the quadrotor);
+d1 and d2 stay on the script controller, so both ways are shown. `USE_DIAGRAM = False` flies d0
+from the script too; a test checks the two give the same flight (1e-9). Each block loads its own
+copy of `delivery_loop.py`, so the drone is passed through the module `scene.py` imports (each
+copy reads it at load time, so several scenes in one process keep their own drone). With no
+drone (the app's Diagram tab) the functions return zeros of the right shapes, so the editor's
+check is clean. The demo video is `docs/media/hero_demo.mp4`, recorded by
+`tools/record_hero_demo.py` from inside the app (widget grabs plus the VTK render, never the
+desktop) with ffmpeg as an external tool, not a dependency.
+
+**D-140 — NF-01 trail merge (M10, approved 2026-11-22).** The owner approved D-138's proposed fix
+with M10. All trails are now one polyline mesh drawn by one actor (`Viewport.trail_actor`), built
+each frame by `model.merged_trails` from every trail's points with a per-point uint8 "rgb" array
+(a trail's `scene.trail(color=...)`, else the Okabe-Ito palette by order, cached per name and
+reset when the theme reloads the scene). The per-entity `trail_actors` dict is gone (it was only
+used inside the viewport and by tests). NF-01's scene on the dev box (GTX 1050 Ti): median frame
+~20 ms -> ~10.4 ms (~96 fps), so the 60 fps target is met even below the reference GPU.

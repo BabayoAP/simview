@@ -33,12 +33,13 @@ def test_recent_empty_state_then_list(qapp, settings):
 
 
 def test_card_click_opens_main_window(qapp, settings):
-    """A card without a template scene yet (UR5) opens an empty window titled after it."""
+    """A card opens the main window with its template's scene, titled after the template."""
     c = Controller(settings)
     c.start.show()
     c.start.cards[2].clicked.emit("ur5_ik")
     assert c.window is not None and c.window.isVisible()
     assert "Robotic Arm (UR5)" in c.window.windowTitle()
+    assert c.window.scene_path is not None and c.window.scene_path.parent.name == "ur5_ik"
     assert not c.start.isVisible()
     c.window.show_start_screen.emit()
     assert c.start.isVisible()

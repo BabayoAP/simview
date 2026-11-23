@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, TypeVar
 
@@ -28,7 +29,11 @@ class Sensors(dict[str, "Sensor"]):
 
 def quat_matrix(q: Sequence[float] | np.ndarray) -> np.ndarray:
     """Rotation matrix of a quaternion (w, x, y, z); it doesn't need to be unit length."""
-    w, x, y, z = np.asarray(q, dtype=np.float64) / np.linalg.norm(q)
+    # Scalar math: called several times per tick per body, where NumPy's per-call overhead on
+    # four numbers dominates (NF-03).
+    w, x, y, z = q.tolist() if isinstance(q, np.ndarray) else (float(v) for v in q)
+    n = math.sqrt(w * w + x * x + y * y + z * z)
+    w, x, y, z = w / n, x / n, y / n, z / n
     return np.array(
         [
             [1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
@@ -80,6 +85,15 @@ class Entity:
     def derivative(self, t: float, x: np.ndarray, u: np.ndarray) -> np.ndarray:
         raise NotImplementedError
 
+    def _index(self, state: str) -> int:
+        """Index of a named state in `x` (cached; rebuilt if `state_names` is replaced)."""
+        names = self.state_names
+        cache = self.__dict__.get("_state_index")
+        if cache is None or cache[0] is not names:
+            cache = (names, {n: i for i, n in enumerate(names)})
+            self.__dict__["_state_index"] = cache
+        return cache[1][state]
+
     def position(self) -> np.ndarray | None:
         """Where the viewport draws this entity's marker and trail (VP-04), or None.
 
@@ -97,6 +111,9 @@ class Entity:
         about z); without them it's the identity."""
         names = self.state_names
         if "qw" in names:
+            i = self._index("qw")
+            if names[i : i + 4] == ("qw", "qx", "qy", "qz"):
+                return quat_matrix(self.x[i : i + 4])
             return quat_matrix([self[n] for n in ("qw", "qx", "qy", "qz")])
         for n in ("yaw", "psi"):
             if n in names:
@@ -148,4 +165,7 @@ class Entity:
 
     def __getitem__(self, state: str) -> float:
         """Current value of one named state, e.g. `ball["h"]`."""
-        return float(self.x[self.state_names.index(state)])
+        try:
+            return float(self.x[self._index(state)])
+        except KeyError:
+            raise ValueError(f"{state!r} is not a state of {self.name}") from None
