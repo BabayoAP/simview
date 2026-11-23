@@ -163,10 +163,37 @@ class Trail:
         pts = np.asarray(points, dtype=np.float64)
         self.points = deque(zip([t] * len(pts), pts, strict=True))  # rows are views, no copies
 
+    def array(self) -> np.ndarray:
+        """The positions as an (N, 3) array, oldest first."""
+        if not self.points:
+            return np.empty((0, 3))
+        return np.array([p for _, p in self.points])
+
     def polyline(self) -> pv.PolyData | None:
         if len(self.points) < 2:
             return None
-        return pv.lines_from_points(np.array([p for _, p in self.points]))
+        return pv.lines_from_points(self.array())
+
+
+def merged_trails(paths: list[tuple[np.ndarray, np.ndarray]]) -> pv.PolyData | None:
+    """All trails as one polyline mesh with per-point "rgb" colors, so the viewport draws them
+    with one actor (NF-01, D-140). `paths` are (points (N, 3), rgb uint8 (3,)) pairs; paths with
+    fewer than 2 points are skipped. None when nothing is left."""
+    parts = [(np.asarray(pts, dtype=np.float64), rgb) for pts, rgb in paths if len(pts) >= 2]
+    if not parts:
+        return None
+    sizes = np.array([len(p) for p, _ in parts])
+    pts = np.concatenate([p for p, _ in parts])
+    # VTK's legacy cell layout: [n0, ids..., n1, ids...]
+    lines = np.empty(len(sizes) + len(pts), dtype=np.int64)
+    heads = np.concatenate(([0], np.cumsum(sizes[:-1] + 1)))
+    lines[heads] = sizes
+    mask = np.ones(len(lines), dtype=bool)
+    mask[heads] = False
+    lines[mask] = np.arange(len(pts))
+    poly = pv.PolyData(pts, lines=lines)
+    poly.point_data["rgb"] = np.repeat(np.array([c for _, c in parts], dtype=np.uint8), sizes, 0)
+    return poly
 
 
 # -- debug draws (VP-07) ---------------------------------------------------------------------

@@ -1225,3 +1225,11 @@ drone (the app's Diagram tab) the functions return zeros of the right shapes, so
 check is clean. The demo video is `docs/media/hero_demo.mp4`, recorded by
 `tools/record_hero_demo.py` from inside the app (widget grabs plus the VTK render, never the
 desktop) with ffmpeg as an external tool, not a dependency.
+
+**D-140 — NF-01 trail merge (M10, approved 2026-11-22).** The owner approved D-138's proposed fix
+with M10. All trails are now one polyline mesh drawn by one actor (`Viewport.trail_actor`), built
+each frame by `model.merged_trails` from every trail's points with a per-point uint8 "rgb" array
+(a trail's `scene.trail(color=...)`, else the Okabe-Ito palette by order, cached per name and
+reset when the theme reloads the scene). The per-entity `trail_actors` dict is gone (it was only
+used inside the viewport and by tests). NF-01's scene on the dev box (GTX 1050 Ti): median frame
+~20 ms -> ~10.4 ms (~96 fps), so the 60 fps target is met even below the reference GPU.

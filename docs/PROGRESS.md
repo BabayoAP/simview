@@ -16,8 +16,8 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M7: Block editor | ✅ Approved 2026-11-20 (CI: green except macOS GL, see Next) | `main` | BD-01–BD-08, DS-10 |
 | M8: Sensors + Aero/Vehicles toolboxes | ✅ Approved 2026-11-21, merged into `main` (PR #2) | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
 | M9: Monte Carlo + RL | ✅ Approved 2026-11-22, merged into `main` (PR #3) | `m9-monte-carlo-rl` | SE-08, SE-09, DA-05, DA-06, ML-01–ML-04 |
-| M10: Polish + hero demo | Done, awaiting approval | `m10-polish-demo` | NF-01–NF-09, TB-01, TB-02, DS-11 |
-| M11: Vision world model (PRD 1.4) | Built 2026-11-22, awaiting approval (GL 18/18 pass) | `m11-vision-world-model` | VW-01–VW-11 |
+| M10: Polish + hero demo | ✅ Approved 2026-11-22, merged into `main` (PR #4) | `m10-polish-demo` | NF-01–NF-09, TB-01, TB-02, DS-11 |
+| M11: Vision world model (PRD 1.4) | ✅ Approved 2026-11-22, merged into `main` (PR #5) | `m11-vision-world-model` | VW-01–VW-11 |
 
 ## M1: Skeleton + design system
 
@@ -437,7 +437,7 @@ drone-landing env, (4) training panel + click-to-replay, then the PPO done-when.
 | ML-04 | ✅ | `record_every`; `test_recorded_episodes_replay_as_runs`, `test_clicking_a_recorded_episode_replays_it` + manual check |
 
 
-## M10: Polish + hero demo (done, awaiting approval)
+## M10: Polish + hero demo (approved 2026-11-22)
 
 Plan: (1) performance pass against NF-01–NF-07 with a rerunnable benchmark, (2) TB-01/TB-02
 and DS-11 checks, (3) design QA of every panel in both themes, (4) README with GIFs and
@@ -493,11 +493,12 @@ and DS-11 checks, (3) design QA of every panel in both themes, (4) README with G
   (`tests/ui/test_blockeditor.py`).
 - NF-01 (D-138): new GL test with the target scene; ~48 fps on this box's GTX 1050 Ti (below the
   GTX 1660 reference). Documented gap: trails cost ~5 ms per frame; merging them into one actor
-  is the proposed fix (needs approval).
+  is the proposed fix (needs approval). Approved with M10; done (D-140): one trail actor with
+  per-point colors, median frame 10.4 ms (~96 fps). 510 tests + 17 GL pass, lint clean.
 
 ### M10 requirement mapping
 
-- NF-01 ⚠️ measured 48 fps on below-reference hardware; 30 fps regression test; fix proposed (D-138)
+- NF-01 ✅ trails merged into one actor (D-140, approved): ~96 fps on the GTX 1050 Ti (was 48); 30 fps regression test
 - NF-02 ⚠️ 9.5x vs 20x on this box; rerun `benchmarks/nf_bench.py` on the Mac (reference)
 - NF-03 ⚠️ 3.8x here (was 1.65x, Mac was 6.5x before the pass); Mac rerun pending
 - NF-04 ✅ (M4 IPC test) · NF-05 ✅ 2.6 s · NF-06 ✅ · NF-07 ✅ 1055 MB · NF-08 ✅ CI on Windows,
@@ -510,7 +511,7 @@ and DS-11 checks, (3) design QA of every panel in both themes, (4) README with G
   (`test_ten_signals_of_100k_samples_redraw_at_30_fps`, median ~25 ms vs 33 ms) failed once
   under full-suite load and passed on rerun.
 
-## M11: Vision world model (PRD 1.4, built 2026-11-22, awaiting approval)
+## M11: Vision world model (PRD 1.4, approved 2026-11-22)
 
 Built on `m11-vision-world-model` (branched from `m10-polish-demo`) while the owner was away, at
 the owner's request, before M10 parts 3–5 were finished (see QUESTIONS_FOR_TOMORROW.md).
@@ -555,9 +556,9 @@ the car is still is 0.45–0.65 (the mean per run is the reported figure).
 
 ## Next
 
-1. M10 done on `m10-polish-demo`, awaiting the owner's approval. Open: the Mac NF-02/NF-03
-   rerun, and whether to do the NF-01 trail merge (D-138). M8/M9 are on `main`. M11 (vision
-   world model) is built on `m11-vision-world-model` (includes M10), also awaiting approval.
+1. M10 approved 2026-11-22 (with the NF-01 trail merge, D-140); merged into `main`. M11 (vision
+   world model) approved 2026-11-22; merged into `main` after M10. Open: the Mac NF-02/NF-03
+   rerun. Next milestone: M12 (scenario tests + reproducibility) on `m12-scenario-tests`.
 2. macOS GL CI: the repo is public since 2026-11-20, so Actions runs again. The first run on
    `main` (M7) is green except `gl (macos-latest)`, which crashes (exit 133) in
    `test_scrubbing_redraws_the_real_viewport_within_100_ms`, the only GL test that opens the

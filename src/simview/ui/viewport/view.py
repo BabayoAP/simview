@@ -121,7 +121,8 @@ class Viewport(QWidget):
         self.entity_actors: dict[str, list[Any]] = {}
         self.marker_actors: dict[str, Any] = {}
         self.trails: dict[str, model.Trail] = {}
-        self.trail_actors: dict[str, Any] = {}
+        self.trail_actor: Any = None  # all trails in one actor (NF-01, D-140)
+        self.trail_colors: dict[str, np.ndarray] = {}
         self.frame_actors: list[Any] = []
         self.target_actors: dict[str, Any] = {}
         self.visual_actors: dict[str, Any] = {}
@@ -546,34 +547,43 @@ class Viewport(QWidget):
             self._needs_framing = False
             self.frame_all()
 
+    def trail_color(self, name: str) -> np.ndarray:
+        """A trail's rgb (uint8): its `scene.trail(color=...)`, else the palette by order."""
+        rgb = self.trail_colors.get(name)
+        if rgb is None:
+            custom = self.desc.trails.get(name, (0.0, None))[1] if self.desc else None
+            k = list(self.trails).index(name)
+            hex_color = (
+                model.resolve_color(custom, self.theme)
+                if custom is not None
+                else tokens.OKABE_ITO[k % len(tokens.OKABE_ITO)]
+            )
+            rgb = self.trail_colors[name] = model.hex_rgb(hex_color)
+        return rgb
+
     def _update_trails(self) -> None:
-        palette = tokens.OKABE_ITO
-        for k, (name, trail) in enumerate(self.trails.items()):
-            line = trail.polyline()
-            actor = self.trail_actors.get(name)
-            if line is None:
-                if actor is not None:
-                    actor.SetVisibility(False)
-                continue
-            if actor is None:
-                custom = self.desc.trails.get(name, (0.0, None))[1] if self.desc else None
-                actor = self.plotter.add_mesh(
-                    line,
-                    color=(
-                        model.resolve_color(custom, self.theme)
-                        if custom is not None
-                        else palette[k % len(palette)]
-                    ),
-                    line_width=tokens.TRAIL_WIDTH,
-                    pickable=False,
-                    name=f"trail:{name}",
-                    render=False,
-                    lighting=False,
-                )
-                self.trail_actors[name] = actor
-            else:
-                actor.mapper.SetInputData(line)
-            actor.SetVisibility(True)
+        poly = model.merged_trails(
+            [(trail.array(), self.trail_color(name)) for name, trail in self.trails.items()]
+        )
+        actor = self.trail_actor
+        if poly is None:
+            if actor is not None:
+                actor.SetVisibility(False)
+            return
+        if actor is None:
+            actor = self.trail_actor = self.plotter.add_mesh(
+                poly,
+                scalars="rgb",
+                rgb=True,
+                line_width=tokens.TRAIL_WIDTH,
+                pickable=False,
+                name="trails",
+                render=False,
+                lighting=False,
+            )
+        else:
+            actor.mapper.SetInputData(poly)
+        actor.SetVisibility(True)
 
     def set_draws(self, draws: list[tuple]) -> None:
         """VP-07: replace the debug draws."""
@@ -808,8 +818,8 @@ class Viewport(QWidget):
                 for b, m in enumerate(model.body_world_matrices(self.frame.bodies)):
                     self.frame_actors[b].user_matrix = m
         elif key == "trails":
-            for a in self.trail_actors.values():
-                a.SetVisibility(value)
+            if self.trail_actor is not None:
+                self.trail_actor.SetVisibility(value)
         self._sync_toggle_states()
 
     def set_display_mode(self, mode: str) -> None:
