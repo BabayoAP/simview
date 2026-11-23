@@ -28,6 +28,7 @@ from qtpy.QtGui import (
     QPainterPath,
     QPainterPathStroker,
     QPen,
+    QShowEvent,
     QWheelEvent,
 )
 from qtpy.QtWidgets import (
@@ -424,6 +425,10 @@ class DiagramView(QGraphicsView):
                 self.blocks[i].setSelected(True)
 
     def fit(self) -> None:
+        if not self.isVisible():  # a hidden view has no real size yet: fit when it's shown
+            self._fit_pending = True
+            return
+        self._fit_pending = False
         rect = self._scene.itemsBoundingRect()
         if rect.isEmpty():
             self.resetTransform()
@@ -436,6 +441,11 @@ class DiagramView(QGraphicsView):
         if not lo <= s <= min(hi, 1.0):  # don't blow small diagrams up past 100 %
             k = min(max(s, lo), 1.0) / s
             self.scale(k, k)
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 (Qt API)
+        super().showEvent(event)
+        if getattr(self, "_fit_pending", False):
+            self.fit()
 
     @property
     def zoom(self) -> float:

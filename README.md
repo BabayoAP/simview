@@ -5,7 +5,10 @@ Build, run, and visualize simulations of robots, vehicles, drones, and dynamic s
 ![Drone Delivery template: three quadrotors fly their routes while the plot tracks one drone's EKF position error against its 3-sigma bound](docs/media/hero_drone_delivery.gif)
 
 *Drone Delivery: three quadrotors with GPS + IMU EKFs fly depot → drop-off → depot in gusty
-wind; the plot shows one drone's estimation error against its 3σ bound.*
+wind; the plot shows one drone's estimation error against its 3σ bound. The full hero demo
+(78 s: the fleet, one drone's loop as a block diagram, its error against ±3σ, and a 50-trial
+Monte Carlo of the delivery time) is [docs/media/hero_demo.mp4](docs/media/hero_demo.mp4),
+recorded by `tools/record_hero_demo.py`.*
 
 ![Autonomous Vehicle template: a car with lidar follows a curved road past traffic](docs/media/av_scenario.gif)
 
