@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tempfile
 from functools import cache
 from pathlib import Path
 
@@ -36,7 +37,18 @@ def apply_theme(app: QApplication, theme: ThemeName) -> None:
     _current = theme
     _icon.cache_clear()
     app.setPalette(build_palette(theme))
-    app.setStyleSheet(build_qss(theme))
+    app.setStyleSheet(build_qss(theme, _combo_arrow(theme)))
+
+
+def _combo_arrow(theme: ThemeName) -> str:
+    """Write the tinted chevron for QComboBox::down-arrow to a file (QSS images need a path;
+    a styled combo box drops the native arrow) and return its path with forward slashes."""
+    path = Path(tempfile.gettempdir()) / "simview-theme" / f"chevron-down-{theme}.svg"
+    data = svg_for("chevron-down", tokens.color(theme, "text.secondary"))
+    if not path.is_file() or path.read_bytes() != data:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    return path.as_posix()
 
 
 def build_palette(theme: ThemeName) -> QPalette:

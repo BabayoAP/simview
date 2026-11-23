@@ -478,11 +478,7 @@ and DS-11 checks, (3) design QA of every panel in both themes, (4) README with G
   (§7.8). The Robotic Arm (UR5) card opened an empty window: `templates/ur5_ik/scene.py` is new
   (the UC-3 drag scene, also kept as `examples/ur5_ik_drag.py`), so all 4 flagship cards open a
   scene (`tests/templates/test_ur5_ik.py`), and template windows keep the template's title
-  instead of "scene.py". Still to check on screen: the recolored ViewCube (the screen was locked
-  for the second capture pass, which makes grabs blank and GL tests hang), the light-theme
-  speed combo box (no visible frame), and the remaining panels (sweep view, training with data).
-  498 tests pass offline (the DA-01 timing test flaked once again, passed alone); GL tests
-  not rerun yet.
+  instead of "scene.py". Second screen pass (2026-11-22, screen unlocked, every template in both themes): the ViewCube and triad show X red / Y green / Z blue. The light-theme speed combo box had no frame because combo boxes had no stylesheet rule and the native fill matched the toolbar; `QComboBox` now has the `QLineEdit` frame from tokens, and since a styled combo box loses Qt's native arrow, the theme writes a tinted Lucide `chevron-down` to a temp file for `::down-arrow` (new token `ICON_SIZE_INLINE`; `tests/ui/test_tokens.py`). GL tests pass on the real display (18, run on the M11 branch, which includes this one). Still to check on screen: the sweep view and training panels with data.
 - After part 1: 486 tests pass (offline: 20 skipped), 16 GL tests pass, lint clean. The DA-01 plot timing test
   (`test_ten_signals_of_100k_samples_redraw_at_30_fps`, median ~25 ms vs 33 ms) failed once
   under full-suite load and passed on rerun.
