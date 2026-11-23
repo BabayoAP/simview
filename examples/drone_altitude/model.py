@@ -1,4 +1,4 @@
-"""Vertical drone dynamics shared by the script and block-diagram versions (UC-2 preview;
+"""Vertical drone dynamics shared by the script and block-diagram versions (a UC-2 preview;
 the 6-DOF quadrotor arrives with the Aerospace toolbox in M8)."""
 
 import numpy as np

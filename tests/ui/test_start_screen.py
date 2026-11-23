@@ -8,7 +8,7 @@ def test_four_template_cards(qapp, settings):
     s = StartScreen(settings)
     assert [c.template_id for c in s.cards] == [
         "av_scenario",
-        "drone_intercept",
+        "drone_delivery",
         "ur5_ik",
         "drone_landing",
     ]
@@ -33,11 +33,12 @@ def test_recent_empty_state_then_list(qapp, settings):
 
 
 def test_card_click_opens_main_window(qapp, settings):
+    """A card without a template scene yet (UR5) opens an empty window titled after it."""
     c = Controller(settings)
     c.start.show()
-    c.start.cards[1].clicked.emit("drone_intercept")
+    c.start.cards[2].clicked.emit("ur5_ik")
     assert c.window is not None and c.window.isVisible()
-    assert "Drone Interception" in c.window.windowTitle()
+    assert "Robotic Arm (UR5)" in c.window.windowTitle()
     assert not c.start.isVisible()
     c.window.show_start_screen.emit()
     assert c.start.isVisible()

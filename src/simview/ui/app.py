@@ -48,8 +48,13 @@ class Controller:
         self.start.project_opened.connect(self.open_project)
 
     def open_template(self, template_id: str) -> None:
+        from simview.templates import scene_path
+
         title = next(t[1] for t in TEMPLATES if t[0] == template_id)
-        self.open_window(f"template/{template_id}", title)
+        window = self.open_window(f"template/{template_id}", title)
+        path = scene_path(template_id)
+        if path is not None:
+            window.load_scene(path)  # D-098
 
     def open_project(self, path: str) -> None:
         add_recent_project(self.settings, path)

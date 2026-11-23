@@ -26,7 +26,7 @@ from simview.ui.theme import icon, tokens
 # (template id, title, one-line description, Lucide icon)
 TEMPLATES: tuple[tuple[str, str, str, str], ...] = (
     ("av_scenario", "Autonomous Vehicle", "Bicycle-model car with lidar and camera.", "car"),
-    ("drone_intercept", "Drone Interception", "Seeker, EKF, and PN guidance.", "crosshair"),
+    ("drone_delivery", "Drone Delivery", "Quadrotor fleet, wind, GPS + IMU EKF.", "package"),
     ("ur5_ik", "Robotic Arm (UR5)", "Drag the end effector, watch IK solve.", "bot"),
     ("drone_landing", "Drone Landing (RL)", "Gymnasium env for PPO training.", "plane-landing"),
 )

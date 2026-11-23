@@ -39,5 +39,5 @@ Windows dev box: `.venv/Scripts/…` (Python 3.13, pip, no uv); tests with
 viewport changed). Iterate with `pytest tests/<area>` first; full suite once before commit.
 
 Stack: Python 3.11+ (dev on 3.12), PySide6 through `qtpy`, type hints everywhere.
-Repo: private `BabayoAP/simview`, MIT. CI (3 OSes × Python 3.11/3.12, lint, `simview/core`
+Repo: public `BabayoAP/simview` (since 2026-11-20), MIT. CI (3 OSes × Python 3.11/3.12, lint, `simview/core`
 coverage ≥80%) runs only on PRs to `main` or by hand (`gh workflow run CI --ref <branch>`), D-088.

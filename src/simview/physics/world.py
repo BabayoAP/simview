@@ -72,9 +72,12 @@ class Shape:
     friction: list[float]
     rgba: list[float] | None = None
     mass: float | None = None  # None: static
+    collides: bool = True  # False: drawn and seen by rays, but never in contact (road paint)
 
-    def add_to(self, spec: mujoco.MjSpec) -> None:
-        if self.mass is None:
+    def add_to(self, spec: mujoco.MjSpec, parent: mujoco.MjsBody | None = None) -> None:
+        if parent is not None:  # a proxy's solid, placed in its mocap body's frame
+            geom_pos, geom_quat = self.pos, self.quat
+        elif self.mass is None:
             parent, geom_pos, geom_quat = spec.worldbody, self.pos, self.quat
         else:
             parent = spec.worldbody.add_body(name=self.name, pos=self.pos, quat=self.quat)
@@ -92,6 +95,8 @@ class Shape:
             geom.mass = self.mass
         if self.rgba is not None:
             geom.rgba = self.rgba
+        if not self.collides:
+            geom.contype = geom.conaffinity = 0
 
 
 class Body(Entity):
@@ -156,6 +161,9 @@ class World:
     statics: list[Shape] = field(default_factory=list)
     members: list[Entity] = field(default_factory=list)
     ground: dict[str, object] | None = None
+    # D-090: custom-model entities with a solid that follows their pose (mocap bodies)
+    proxies: list[tuple[Entity, Shape]] = field(default_factory=list)
+    _mocap: list[tuple[Entity, int]] = field(default_factory=list)
     t: float = 0.0
     _model: mujoco.MjModel | None = None
     _data: mujoco.MjData | None = None
@@ -163,7 +171,11 @@ class World:
 
     # -- building -------------------------------------------------------------------------
     def _names(self) -> set[str]:
-        return {s.name for s in self.statics} | {m.name for m in self.members}
+        return (
+            {s.name for s in self.statics}
+            | {m.name for m in self.members}
+            | {e.name for e, _ in self.proxies}
+        )
 
     def _check_name(self, name: str) -> None:
         if not name or "/" in name or "." in name:
@@ -186,6 +198,19 @@ class World:
         body = Body(shape)
         self.adopt(body)
         return body
+
+    def add_proxy(self, entity: Entity, shape: Shape) -> None:
+        """A kinematic solid that follows a custom-model entity's `pose()` (D-090)."""
+        self._check_name(entity.name)
+        self.proxies.append((entity, shape))
+        self.compile()
+
+    def proxy_body(self, entity: Entity) -> int:
+        """The MuJoCo body id of an entity's proxy, or -1."""
+        for e, bid in self._mocap:
+            if e is entity:
+                return bid
+        return -1
 
     def adopt(self, member: Entity) -> None:
         """Add a robot or a free body; its `x0` keeps any placement it already has."""
@@ -216,6 +241,9 @@ class World:
                 m.attach_to(spec)
             elif isinstance(m, Body):
                 m.shape.add_to(spec)
+        for e, shape in self.proxies:
+            body = spec.worldbody.add_body(name=e.name, mocap=True)
+            shape.add_to(spec, parent=body)
         return spec
 
     def compile(self) -> mujoco.MjModel:
@@ -223,6 +251,9 @@ class World:
         self._model, self._data = model, mujoco.MjData(model)
         for m in self.members:
             m.bind(model)  # type: ignore[attr-defined]
+        self._mocap = [
+            (e, mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, e.name)) for e, _ in self.proxies
+        ]
         for fn in self._on_compile:
             fn(model)
         return model
@@ -247,11 +278,21 @@ class World:
         mujoco.mj_forward(self.model, self.data)
 
     def load_state(self) -> None:
-        d = self.data
-        for m in self.members:
-            nq = len(m.qidx)  # type: ignore[attr-defined]
-            d.qpos[m.qidx] = m.x[:nq]  # type: ignore[attr-defined]
-            d.qvel[m.vidx] = m.x[nq:]  # type: ignore[attr-defined]
+        m, d = self.model, self.data
+        for e in self.members:
+            nq = len(e.qidx)  # type: ignore[attr-defined]
+            d.qpos[e.qidx] = e.x[:nq]  # type: ignore[attr-defined]
+            d.qvel[e.vidx] = e.x[nq:]  # type: ignore[attr-defined]
+        for e, bid in self._mocap:
+            pose = e.pose()
+            mid = int(m.body_mocapid[bid])
+            d.mocap_pos[mid] = pose[:3, 3]
+            mujoco.mju_mat2Quat(d.mocap_quat[mid], pose[:3, :3].ravel())
+
+    def kinematics(self) -> None:
+        """Bring body and geom poses up to the current state (before ray casts)."""
+        self.load_state()
+        mujoco.mj_kinematics(self.model, self.data)
 
     def step(self, t: float, dt: float) -> None:
         from simview.physics.mujoco_world import Robot

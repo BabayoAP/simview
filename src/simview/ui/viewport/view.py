@@ -51,6 +51,9 @@ def _gizmo_scale(actor: Any) -> float:
     return tokens.GIZMO_SIZE / max(float(actor.GetLength()), 1e-6)
 
 
+_UNIT_SPHERE = pv.Sphere(radius=1.0, theta_resolution=24, phi_resolution=16)
+
+
 def _group(items: list[Any], key: Any) -> dict[Any, list[Any]]:
     out: dict[Any, list[Any]] = {}
     for item in items:
@@ -564,6 +567,30 @@ class Viewport(QWidget):
                     point_size=size,
                     render_points_as_spheres=True,
                     **common,
+                )
+            )
+        for pts, color, size in g.clouds:  # VP-08: one actor per cloud, plain GL points
+            cloud = pv.PolyData(np.ascontiguousarray(pts, dtype=np.float32))
+            self.draw_meshes.append(cloud)
+            self.draw_actors.append(
+                p.add_mesh(cloud, color=color, point_size=size, style="points", **common)
+            )
+        for color, items in _group(g.ellipsoids, key=lambda d: d[2]).items():  # VP-09
+            shells = []
+            for center, axes, _c in items:
+                shell = _UNIT_SPHERE.copy()
+                shell.points = _UNIT_SPHERE.points @ axes.T + center
+                shells.append(shell)
+            merged = shells[0].merge(shells[1:]) if len(shells) > 1 else shells[0]
+            self.draw_meshes.append(merged)
+            self.draw_actors.append(
+                p.add_mesh(
+                    merged,
+                    color=color,
+                    opacity=tokens.ELLIPSOID_OPACITY,
+                    pickable=False,
+                    reset_camera=False,
+                    render=False,
                 )
             )
         for (color, size), items in _group(g.labels, key=lambda d: (d[2], d[3])).items():

@@ -6,7 +6,7 @@ from simview.core.entity import Entity  # noqa: E402
 from simview.core.scene import Scene  # noqa: E402
 from simview.runner.run import Run, run  # noqa: E402
 
-__all__ = ["Entity", "Run", "Scene", "io", "robotics", "run"]
+__all__ = ["Entity", "Run", "Scene", "aero", "io", "robotics", "run", "sensors", "vehicles"]
 
 
 def __getattr__(name: str) -> object:
@@ -15,6 +15,14 @@ def __getattr__(name: str) -> object:
         import simview.toolboxes.robotics as robotics
 
         return robotics
+    if name in ("aero", "vehicles"):
+        import importlib
+
+        return importlib.import_module(f"simview.toolboxes.{name}")
+    if name == "sensors":
+        import simview.sensors as sensors
+
+        return sensors
     if name == "io":
         import simview.io as io
 

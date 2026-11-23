@@ -649,3 +649,114 @@ the scene replaces those plots (plots the user added are kept).
 the account's Actions minutes. CI now triggers on `workflow_dispatch` and on pull requests to
 `main` (docs-only changes skipped). Branch work is verified locally; the 3-OS run happens once
 per milestone, before the owner merges.
+
+## M8: Sensors and draws
+
+**D-089 — A controller's draws last until it runs again.** Before M8 every non-persistent draw
+lasted one tick, so a 10 Hz controller on a 1 kHz scene showed its draws for 1 tick in 100.
+Draws made inside a controller now belong to it and are replaced the next time it runs; draws
+made outside a controller still last one tick; `persist=True` and `clear()` are unchanged.
+
+**D-090 — Solids for custom-model entities.** `scene.attach_shape(entity, shape, size, ...)`
+adds a MuJoCo mocap body that follows the entity's `pose()` each tick, so lidar and cameras see
+it and the viewport draws (and selects) it. It is kinematic: it pushes free objects, nothing
+pushes it.
+
+**D-091 — Sensor timing and noise.** A sensor samples once at the start of a run, then at the
+end of every tick that is a multiple of its period, so a controller at tick k reads the state at
+tick k, and it holds its reading in between. Its rate must divide 1/dt. Each sensor has its own
+noise generator, seeded from the scene seed and its full name, so adding a sensor doesn't
+change the others' noise. The IMU differentiates the entity's velocity and orientation over its
+sample period (any entity works); its first sample reads -g and zero rate.
+
+**D-092 — Seeker angles.** Range, bearing and elevation to the target are in the world frame at
+the sensor (a stabilized seeker): bearing atan2(dy, dx), elevation atan2(dz, horizontal
+distance), with white noise per channel.
+
+**D-093 — The camera is ray cast, not rendered.** One MuJoCo ray per pixel on the CPU (geom
+color shaded by incidence angle, sky color on a miss) instead of an OpenGL render, so it works
+headless and gives the same image on every machine. Default 160x120 at 10 Hz.
+
+## M8: Vehicles toolbox
+
+**D-094 — Paths and roads (TB-VEH).** A path is a 2-D polyline (`sv.vehicles.Path`) with arc
+length, `point_at` / `heading_at` (clamped to the ends) and `nearest`, whose `cross_track` is
+positive left of the path. Road and lane primitives are data, not MuJoCo geometry: a `Road` is
+a centerline with N lanes of equal width, lane 0 the rightmost (drive on the right); lanes and
+edges are mitred offsets of the centerline. `road.draw(ctx.draw)` draws edges and dashed
+dividers as persistent debug lines (call it once, at t = 0). Lidar doesn't see the road
+surface; NPCs get solids with `scene.attach_shape` (D-090) when sensors should see them.
+
+**D-095 — Kinematic bicycle.** Reference point is the rear axle; states x, y, yaw, v; input
+`u = [accel, steer]`, clipped to `max_accel` / `max_steer` (35° default), speed held within
+[`min_speed`, `max_speed`] (0 to 40 m/s, so no reversing by default). Wheelbase 2.7 m default.
+
+**D-096 — Path trackers.** Pure pursuit uses lookahead `gain * v + min_lookahead` (0.5 s,
+3 m) with the goal searched forward from the nearest point; Stanley uses the front-axle
+cross-track error with a softening speed (1 m/s). Both are plain callables
+`ctrl(x, y, yaw, v) -> steer`, so they work in script controllers and are easy to wrap as
+blocks later; `speed_control` is a clipped P-controller on speed.
+
+**D-097 — Scripted NPCs.** `ScriptedNPC` follows a path at a speed given as a constant, a
+(t, v) schedule (linear between points) or a function of t; it has no dynamics and doesn't
+react to other agents (the PRD's "scripted"). Arc length advances by the trapezoid rule, exact
+for piecewise-linear schedules. At the path's end it stops, or starts over with `loop=True`.
+
+## M8: Templates
+
+**D-098 — A template is a scene file that a start-screen card opens.** Each template lives in
+`src/simview/templates/<id>/scene.py` (PRD §8) and is self-contained: UC-1's planner is a
+controller inside the scene file rather than a separate `planner.py`, so Save Project, which
+copies the open scene into the project, takes everything along. Opening a card loads that
+scene; cards without a scene yet (UC-2 until the Aerospace toolbox lands, UC-3, UC-4) still
+open an empty window. The UC-1 planner keeps its lane with pure pursuit and its distance with
+a gap taken from lidar returns inside the lane (6 m standoff + 1.5 s headway, 12 m/s cruise).
+
+**D-099 — UC-2 is a drone delivery fleet (PRD 1.3).** The owner replaced the drone
+interception use case with a delivery fleet on 2026-11-20 and kept it as the hero demo. The
+Aerospace toolbox (TB-AERO) keeps the 6-DOF quadrotor, EKF and UKF, and flight metrics; it adds
+attitude/position flight control, route following, and a wind and gust model, and drops the
+interceptor and guidance laws. The template id is `drone_delivery`. The seeker sensor (SN-01)
+stays as a general range/bearing sensor.
+
+## M8: Aerospace toolbox (TB-AERO, PRD 1.3)
+
+**D-100 — Quadrotor model.** A rigid body with collective thrust along body z and body
+torques: `u = [thrust, tau_x, tau_y, tau_z]`, clipped to [0, `max_thrust`] (2.5 m g by default)
+and +-`max_torque`. States are position, world velocity, quaternion (w, x, y, z, body to world,
+renormalized each tick), and body rate, so `position()`, `velocity()`, `rotation()` and sensors
+work unchanged. Rotor speeds and motor lag aren't modelled. Drag is linear in the air-relative
+velocity, `drag * (v - wind)`, which is how a `Wind` entity acts on it.
+
+**D-101 — Attitude controller.** An acceleration command becomes the thrust vector
+m (a + g); its direction is the desired body z (tilt limited, 35° default, and never below
+10% of hover lift), and yaw is set by keeping body y perpendicular to the yaw heading (the
+geometric SO(3) construction). A PD law on the SO(3) error with per-axis gains J wn^2 and
+2 zeta wn J (wn 25 rad/s, zeta 0.9) gives the torques. `PositionController` is a PD on
+position and velocity errors plus a feed-forward acceleration, limited to `max_accel`.
+
+**D-102 — Wind.** A `Wind` entity is uniform in space: mean plus a first-order Gauss-Markov
+gust per axis, stepped with the exact discrete update so the gust variance doesn't depend on
+dt. Its velocity is logged as `wind.wx/wy/wz`. Its noise comes from its own generator seeded
+from the scene seed and its name, like sensors (D-091).
+
+**D-103 — Route follower.** A carrot moves along the current leg at the route speed, ramping
+up and down at `accel` (2 m/s^2), so it stops at each waypoint, and slowing to a stop as the
+drone falls `max_lag` behind; its acceleration is fed forward, so the drone doesn't overshoot
+the corners. A waypoint counts as reached inside `arrive_radius`; arrival times are recorded
+(delivery time is read from them), and `dwell` hovers there (a drop-off). It steers by whatever
+state it is given, true or estimated.
+
+**D-104 — EKF and UKF.** One interface: `predict(dt, u)` then `update(z)`, with models as
+plain functions and `Q`/`R` as matrices or functions of dt. The EKF takes Jacobians or uses
+central differences, and updates P in Joseph form. The UKF uses scaled sigma points (alpha
+0.5, beta 2, kappa 0). Both keep the last innovation and its NIS. A `residual` function lets
+angle measurements wrap.
+
+**D-105 — Navigation filter.** `NavFilter` estimates position and velocity (6 states) from an
+IMU and GPS, loosely coupled: the IMU's specific force, rotated to the world by the drone's
+attitude, plus gravity, is the prediction input, and each GPS fix is a position update. The
+attitude is taken as known (an attitude reference), so the models are linear and the EKF and
+UKF agree; IMU biases aren't estimated. Process noise is the discrete white-noise acceleration
+model with the accelerometer noise. In the loop (25 s of gusty flight) the position error stays
+inside 3 sigma over 97% of the time and the mean NEES is consistent with 3 degrees of freedom.

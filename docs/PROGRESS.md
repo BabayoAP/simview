@@ -13,8 +13,8 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M5: Timeline + plots | ✅ Approved 2026-11-19 | `main` | VP-05, DA-01–DA-04, DA-07, DS-09 |
 | M5b: Run investigation (PRD 1.2) | ✅ Approved 2026-11-19 | `main` | RI-01–RI-06 |
 | M6: Console + workspace | ✅ Approved 2026-11-19 | `main` | SC-01–SC-05, IO-02, IO-04 |
-| M7: Block editor | ✅ Approved 2026-11-20 (CI pending: account billing) | `main` | BD-01–BD-08, DS-10 |
-| M8: Sensors + Aero/Vehicles toolboxes | In progress | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
+| M7: Block editor | ✅ Approved 2026-11-20 (CI: green except macOS GL, see Next) | `main` | BD-01–BD-08, DS-10 |
+| M8: Sensors + Aero/Vehicles toolboxes | ✅ Approved 2026-11-21 | `m8-sensors-aero-vehicles` | SN-01–SN-03, VP-08, VP-09, TB-AERO, TB-VEH |
 | M9–M10 | Not started | | see PRD §10 |
 
 ## M1: Skeleton + design system
@@ -292,7 +292,97 @@ Scope plot, and the toolbar's page switch. Problems (missing entity, unconnected
 as red outlines with the message under each block. Not checked by eye: dragging, the
 quick-add popup, and the wire-hover tooltip on a real display (all three are tested).
 
+## M8: Sensors + Aero/Vehicles toolboxes
+
+- Part 1 (`3193fd1`): sensors in `simview/sensors/` (IMU, GPS, seeker, camera, lidar) mounted
+  with `entity.attach(...)` and logged as `<entity>.<sensor>.<field>`; `scene.attach_shape`
+  gives custom entities a MuJoCo solid (D-090); `ctx.draw.points` / `ellipsoid` (VP-08, VP-09);
+  a controller's draws last until it runs again (D-089). D-089..D-093. **No sensor tests yet.**
+- Part 2 (`9334f83`): Vehicles toolbox `sv.vehicles` (TB-VEH): kinematic bicycle, paths and
+  roads with lanes, pure pursuit, Stanley, speed control, scripted NPCs (D-094..D-097);
+  15 tests in `tests/toolboxes/vehicles/`.
+- Part 3 (`2681d86`): UC-1 Autonomous Vehicle template (`src/simview/templates/av_scenario/`),
+  loaded by its start-screen card (D-098). A 30 s run: about 27x real time headless, lane kept
+  within 8 cm through the bend, 8.7 m closest gap behind the braking NPC, settles at 18 m /
+  8 m/s; 5 tests (`tests/templates/`, `tests/ui/test_scene_session.py`).
+- Part 4: sensor tests and the viewport side of VP-08 / VP-09. `tests/sensors/` (22 tests):
+  IMU at rest and under acceleration + yaw rate, bias/noise statistics, sample-and-hold and
+  `updated()`, seeded per-sensor noise (D-091), GPS mount offset and noise, seeker geometry
+  and `rbe` round trip, lidar ranges to a wall and the ground (own solid excluded), max range,
+  noise, camera color/depth/sky/intrinsics/determinism, logged `<entity>.<sensor>.<field>`
+  channels, cloud and ellipsoid draw data. The viewport didn't draw `cloud` or `ellipsoid`
+  draws at all: it now does (one points actor per cloud; translucent shells batched by color,
+  `tokens.ELLIPSOID_OPACITY` 0.25). GL tests: a cloud keeps its points and an ellipsoid's
+  shell spans its semi-axes; a 200k-point cloud replaced and drawn each frame has a median
+  frame time under 33 ms (VP-08) on the Mac. Checked by eye: a 32-beam scan and a 2-sigma
+  ellipsoid in the dark theme.
+- Gizmo fix (`fix/gizmo-drag`, PR #1, cherry-picked here): dragging targets didn't work
+  because SimView's interactor style lacked PyVista's `_parent` link.
+- 425 tests pass (Mac, Python 3.12, offline: 20 skipped), plus all 16 GL tests with
+  `QT_QPA_PLATFORM=cocoa SIMVIEW_GL=1` (they do run from a Claude terminal with cocoa); lint
+  clean.
+- Rescope (`7bddf22`, PRD 1.3, D-099): UC-2 is now a drone delivery fleet, still the hero demo.
+- Part 5: Aerospace toolbox `sv.aero` (TB-AERO): `Quadrotor`, `AttitudeController`,
+  `PositionController`, `Wind`, `Route` and `RouteFollower`, `EKF`, `UKF`, `NavFilter`, `nees`
+  (D-100..D-105); 18 tests in `tests/toolboxes/aero/`: free fall and hover, spin-up, clipping,
+  drag in wind, commanded acceleration and tilt limit, position step, gust statistics and
+  correlation, seeded repeatability, route order / dwell / deviation, EKF equals the linear KF,
+  UKF equals the EKF on a linear model, both converge on range-only fixes, and the GPS + IMU
+  filter flying a gusty route by its own estimate stays 3-sigma consistent (EKF and UKF).
+  443 tests pass, lint clean.
+- Part 6: UC-2 Drone Delivery template (`src/simview/templates/drone_delivery/`), opened by its
+  start-screen card. Three quadrotors (IMU 200 Hz, GPS 10 Hz, EKF `NavFilter`, `RouteFollower`)
+  fly depot -> drop-off (3 s hover at 3 m) -> depot at 15 m through gusty wind, steering by the
+  estimate. Params `gps_noise`, `imu_noise`, `gust`, `cruise_speed`, `cruise_alt` are the M9
+  sweep knobs. Logged: per-drone error and +-3 sigma bounds per axis, error norm, route
+  deviation, delivery time; wind speed. Draws: routes, 3-sigma ellipsoids, the wind arrow.
+  A 60 s run: all three deliver at 20.6-22.6 s and land back on their pads; RMS error
+  0.20-0.22 m (GPS noise 0.8 m), inside 3 sigma 99.7-100% of the time, route deviation under
+  0.45 m in gusts up to 7.9 m/s. 7 tests (`tests/templates/test_drone_delivery.py`, the card
+  in `tests/ui/test_scene_session.py`). Checked by eye in the dark theme.
+- Performance: the quadrotor dynamics and route distance were rewritten for speed and the
+  template logs controller-rate values, taking UC-2 from 1.9x to 6.5x real time headless at
+  dt = 1 ms. NF-03 asks for 10x: the rest is the Python RK4 loop and the per-tick logger, left
+  for the M10 performance pass.
+- 450 tests pass (Mac, Python 3.12, offline: 20 skipped), 16 GL tests pass, lint clean.
+- Not in M8 (per the PRD milestone table): the 50-trial Monte Carlo and its histogram (SE-08,
+  DA-06: M9) and the UC-2 hero demo with a block-diagram version of the loop (M10).
+- D-081 rerun: `tests/toolboxes/aero/test_pid_quadrotor.py` flies the M7 altitude PID
+  (`examples/drone_altitude/altitude.svd`) on the 6-DOF `sv.aero.Quadrotor` (thrust only), as a
+  diagram and as a script: x, y, z, vz and qw match within 1e-9, it climbs to 2 m and holds,
+  and the body stays level over its start point. The M7 example itself keeps its 1-D model.
+- Verified on Windows (Python 3.13, GTX 1050 Ti): 451 tests pass (offline: 20 skipped), all
+  16 GL tests pass with `QT_QPA_PLATFORM=windows SIMVIEW_GL=1` (incl. the 200k-point cloud at
+  30 FPS), lint and format clean.
+- Done-when: the UC-1 and UC-2 templates run end to end ✅ (headless in
+  `tests/templates/`, and from their start-screen cards in `tests/ui/test_scene_session.py`).
+- Requirement IDs: SN-01 ✅ (IMU, GPS, seeker: `tests/sensors/`) SN-02 ✅ (pinhole camera:
+  color, depth, intrinsics, rate, determinism) SN-03 ✅ (MuJoCo ray lidar: beams, FOV, range,
+  noise) VP-08 ✅ (cloud draws; 200k points under 33 ms per frame, GL test) VP-09 ✅ (ellipsoid
+  from covariance and sigma; GL test) TB-AERO ✅ (`tests/toolboxes/aero/`, UC-2 template)
+  TB-VEH ✅ (`tests/toolboxes/vehicles/`, UC-1 template).
+- Not met yet: NF-03's 10x real time for UC-2 (6.5x now), left for the M10 performance pass
+  (see above).
+
+### Manual checks (visual, §0 rule 5)
+
+Dark theme on the Mac (parts 4 and 6). Light theme on Windows: both templates opened from
+their cards and run live in the app (UC-2 for 15 s, UC-1 for 10 s), whole window captured from
+the screen. UC-2: routes, depots and pads, the wind arrow, and the ground shadow read clearly on
+the light background. UC-1: road edges, dashed lane line, the ego's path, NPC boxes, and the
+lidar cloud (blue rings) are visible. At the default camera distance the quadrotors and their
+3-sigma ellipsoids (about 0.2 m) can't be made out (not checked zoomed in). The viewport's
+FPS readout showed 21-22 with the sim running live on this machine, for both templates
+(VP-08's 30 FPS GL test measures rendering alone and passes).
+
 ## Next
 
-1. M8 (PRD §10), on `m8-sensors-aero-vehicles`, with a pull request into `main` opened early so CI
-   runs on it once the account's Actions billing is fixed (M7 hasn't had a CI run yet).
+1. M8 approved 2026-11-21; PR into `main` open for CI. Owner is demoing M8 before M9
+   starts: don't begin M9 until asked.
+2. macOS GL CI: the repo is public since 2026-11-20, so Actions runs again. The first run on
+   `main` (M7) is green except `gl (macos-latest)`, which crashes (exit 133) in
+   `test_scrubbing_redraws_the_real_viewport_within_100_ms`, the only GL test that opens the
+   whole main window; reproducible on re-run. It passed on M6 with the same dependency
+   versions, so suspect M7's main-window changes. Not bisected yet (can't be run from a
+   Claude terminal: try it locally, or bisect on a debug branch). Update: all GL tests,
+   including this one, pass locally on the Mac with `QT_QPA_PLATFORM=cocoa SIMVIEW_GL=1`.
