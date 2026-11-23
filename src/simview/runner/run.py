@@ -93,15 +93,19 @@ def run_metadata(
 def write_context(
     path: Path, scene: Scene | None = None, *, scene_file: str | None = None, **extra: Any
 ) -> Path:
-    """The run's context for the catalog (RI-01): when it ran and which scene file it came
-    from, in `<run>.run.json` next to the log (D-056)."""
+    """The run's context for the catalog (RI-01): when it ran, which scene file it came
+    from, and its manifest (RP-01), in `<run>.run.json` next to the log (D-056). Call it after
+    the log is written: the manifest reads the seed and parameters back from it."""
     import json
+
+    from simview.runner.manifest import MANIFEST_KEY, build_manifest
 
     ctx: dict[str, Any] = {"date": datetime.now().isoformat(timespec="seconds")}
     if scene is not None and scene.file is not None:
         ctx["scene"] = str(scene.file)
     if scene_file is not None:
         ctx["scene"] = scene_file
+    ctx[MANIFEST_KEY] = build_manifest(scene, scene_file=scene_file, log=path)
     ctx.update(extra)
     side = context_path(path)
     side.write_text(json.dumps(ctx, indent=2) + "\n", encoding="utf-8")

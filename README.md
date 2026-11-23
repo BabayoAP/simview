@@ -18,7 +18,7 @@ traffic.*
 > Status: M1–M11 are on `main` (physics and robots, viewport, plots and timeline, run
 > investigation, console, block editor, sensors and the aero/vehicle toolboxes, Monte Carlo and
 > RL, polish and the hero demo, the camera-only vision world model). M12 (scenario tests and
-> reproducibility) is next. See [docs/PRD.md](docs/PRD.md) for the
+> reproducibility) is built and awaiting review. See [docs/PRD.md](docs/PRD.md) for the
 > milestone plan, [docs/PROGRESS.md](docs/PROGRESS.md) for where things stand, and
 > [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the code fits together.
 
@@ -81,6 +81,19 @@ window, and clicking it in the app's Runs panel jumps the timeline there.
 .venv/bin/simview runs report <run> -o report.html                         # HTML debrief
 .venv/bin/simview runs compare <run> <baseline> --atol 1e-6                # first divergence
 .venv/bin/simview runs import robot.csv --time t --map ur5.shoulder_pan_joint.q=j1
+.venv/bin/simview reproduce <run>                                          # identical, or where not
+```
+
+## Scenario tests
+
+A suite (TOML or Python) runs scenes over parameter samples and checks pass/fail criteria, for
+CI: exit code 1 on a failure, JUnit XML, an HTML report, and an optional baseline that flags
+new failures and metric drifts.
+
+```bash
+.venv/bin/simview test src/simview/templates/drone_delivery/checks.toml          # hero demo checks
+.venv/bin/simview test suite.toml --save-baseline base.json                      # record
+.venv/bin/simview test suite.toml --baseline base.json                           # regression gate
 ```
 
 ## Robots

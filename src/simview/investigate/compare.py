@@ -111,12 +111,15 @@ def compare(
             diff = np.abs(a - b)
             if not len(diff):
                 continue
-            bad = np.flatnonzero(diff > atol + rtol * np.abs(b))
+            # NaN on one side only (e.g. a sensor with no reading yet) is a divergence too;
+            # NaN on both sides is not (D-143)
+            bad = np.flatnonzero((diff > atol + rtol * np.abs(b)) | (np.isnan(a) != np.isnan(b)))
+            finite = diff[~np.isnan(diff)]
             out.signals.append(
                 SignalDiff(
                     s,
-                    float(np.nanmax(diff)),
-                    float(np.sqrt(np.nanmean(diff**2))),
+                    float(finite.max()) if len(finite) else 0.0,
+                    float(np.sqrt(np.mean(finite**2))) if len(finite) else 0.0,
                     float(t[bad[0]]) if len(bad) else None,
                 )
             )

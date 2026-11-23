@@ -18,6 +18,7 @@ Decisions made along the way are in [DECISIONS.md](DECISIONS.md). Newest last.
 | M9: Monte Carlo + RL | ✅ Approved 2026-11-22, merged into `main` (PR #3) | `m9-monte-carlo-rl` | SE-08, SE-09, DA-05, DA-06, ML-01–ML-04 |
 | M10: Polish + hero demo | ✅ Approved 2026-11-22, merged into `main` (PR #4) | `m10-polish-demo` | NF-01–NF-09, TB-01, TB-02, DS-11 |
 | M11: Vision world model (PRD 1.4) | ✅ Approved 2026-11-22, merged into `main` (PR #5) | `m11-vision-world-model` | VW-01–VW-11 |
+| M12: Scenario tests + reproducibility (PRD 1.5) | Built 2026-11-22, awaiting approval | `m12-scenario-tests` | ST-01–ST-03, RP-01, RP-02 |
 
 ## M1: Skeleton + design system
 
@@ -554,11 +555,58 @@ themes (voxel colors, BEV arrow, thumbnails). Limits: only the first pipeline is
 thumbnails replay only when `camera_every` is set (off by default); early single-sample IoU while
 the car is still is 0.45–0.65 (the mean per run is the reported figure).
 
+## M12: Scenario tests + reproducibility (PRD 1.5, built 2026-11-22, awaiting approval)
+
+Branch `m12-scenario-tests` (off M11). Nothing new in the UI; everything is the `simview`
+command and the Python API. No new dependencies (stdlib `tomllib`, `xml`, `hashlib`).
+
+- RP-01 run manifests (D-141): `runner/manifest.py`. Every saved run's `<run>.run.json` has a
+  `manifest`: versions, toolboxes, OS/CPU/hostname (off with `--no-machine-info` /
+  `SIMVIEW_NO_MACHINE_INFO=1`), git commit + dirty flag, hashes of the scene's source files,
+  diagrams and opened datasets, seed, params, duration. UI (Stop), headless, Monte Carlo (each
+  kept trial + the sweep's `manifest.json`) and RL eval episodes all get one. The Parquet log is
+  untouched, so NF-06 still holds.
+- RP-02 `simview reproduce <run>` / `sv.reproduce(run)` (D-141): re-runs from the log's
+  metadata, compares exactly (RI-05), reports identical or the first diverging signal and time,
+  and lists environment differences. Exit 0 / 1 / 2. All 5 templates reproduce identically; a
+  faked NumPy version is named; an edited scene file is named and its first divergence reported.
+- ST-01 test scenarios (D-142): `simview.testing` (`sv.TestScenario`, `sv.TestSuite`), TOML or
+  Python suites, parameters as constants / distributions / grids, initial conditions as scene
+  parameters, criteria `must_not: P`, `must: P within T s`, `must: P`, each failure with its
+  RI-03 evidence window.
+- ST-02 `simview test suite.toml`: scenarios run through `sv.sweep` in parallel, exit 1 on any
+  failure, JUnit XML (`<out>/junit.xml`) and an HTML report (verdicts, plus an RI-04 run section
+  with the evidence shaded for each failing run).
+- ST-03 baselines (D-144): `--save-baseline` / `--baseline`; new failures, newly passing, new
+  errors and metric drifts beyond the scenario's tolerance (RI-05's rule, default 10%).
+- Hero demo checks as a suite (D-145): `templates/drone_delivery/checks.toml`. **Finding:** 7 of
+  8 samples pass; at GPS noise 1.38 m + gust 2.78 m/s, d2's EKF error leaves its 3σ bound for
+  1.2 s (the filter is overconfident in strong gusts). Left strict; retuning needs the owner's OK.
+  Later shown to be chance (D-145 update); the check is now 4σ for 1 s (D-146), 8/8 pass.
+- Fix found on the way (D-143): RI-05 `compare` treated NaN-vs-number as equal; now a divergence.
+
+### M12 requirement mapping
+
+- ST-01 ✅ `tests/testing/test_scenario_tests.py` (2 params + 3 criteria from TOML and Python,
+  same verdicts, evidence windows; bad suites and criteria rejected naming the file and field)
+- ST-02 ✅ planted failure: exit 1, JUnit names the case and criterion, identical twice with 2
+  workers; a passing suite exits 0. Headless on all 3 OSes: CI run 45118503163 (manual dispatch) green on Windows, macOS, Linux × 3.11/3.12, plus lint and GL.
+- ST-03 ✅ kp 14 -> 10 worsens settling time ~67%: flagged as `metric drift step#0:
+  settling_time`; unchanged model: "baseline: no differences"
+- RP-01 ✅ `tests/runner/test_manifest.py` + the app-run check in `tests/ui/test_runs_session.py`;
+  one byte changes the scene hash
+- RP-02 ✅ every template identical; NumPy difference named
+- Hero demo checks run as a suite ✅ (finding above)
+- Tests: 677 pass (offline, 23 skipped), lint clean. Viewport untouched (no GL rerun needed).
+
 ## Next
 
-1. M10 approved 2026-11-22 (with the NF-01 trail merge, D-140); merged into `main`. M11 (vision
-   world model) approved 2026-11-22; merged into `main` after M10. Open: the Mac NF-02/NF-03
-   rerun. Next milestone: M12 (scenario tests + reproducibility) on `m12-scenario-tests`.
+1. M10 (PR #4) and M11 (PR #5) approved 2026-11-22 and merged into `main`, CI green on all
+   jobs (including macOS GL). M12 built on `m12-scenario-tests`, **awaiting approval**.
+   Approved 2026-11-22; PR #6. Owner asked to retune the EKF for the hero suite's 3σ check:
+   the sweep showed the EKF is consistent and the check is what fails by chance (D-145
+   update); retunes reverted. Owner picked changing the check: now 4σ for 1 s (D-146), hero
+   suite 8/8 and a 32-sample run 32/32. Open: the Mac NF-02/NF-03 rerun.
 2. macOS GL CI: the repo is public since 2026-11-20, so Actions runs again. The first run on
    `main` (M7) is green except `gl (macos-latest)`, which crashes (exit 133) in
    `test_scrubbing_redraws_the_real_viewport_within_100_ms`, the only GL test that opens the

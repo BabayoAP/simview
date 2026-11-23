@@ -46,7 +46,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--duration", type=float, default=10.0, help="seconds (default 10)")
     parser.add_argument("--seed", type=int, help="override the scene's seed")
     parser.add_argument("--out", type=Path, help="Parquet log path (default runs/<time>.parquet)")
+    parser.add_argument(
+        "--no-machine-info",
+        action="store_true",
+        help="leave OS, CPU and hostname out of the run manifest (RP-01)",
+    )
     args = parser.parse_args(argv)
+    if args.no_machine_info:
+        import os
+
+        from simview.runner.manifest import NO_MACHINE_ENV
+
+        os.environ[NO_MACHINE_ENV] = "1"
     if not args.headless:
         parser.error("live runs arrive with the viewport (M4); pass --headless")
     scene = load_scene(args.scene)

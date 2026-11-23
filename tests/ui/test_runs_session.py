@@ -59,6 +59,10 @@ def test_stopped_run_is_saved_cataloged_and_scanned(qapp, window):
     assert findings[0].signals == ("ur5.shoulder_pan_joint.v",)
     assert window.runs.table.topLevelItem(0).text(6) == str(len(findings))
     assert window.runs.table.topLevelItem(0).text(2) == "app"
+    from simview.runner.manifest import read_manifest  # RP-01: UI runs carry a manifest
+
+    manifest = read_manifest(run.path)
+    assert manifest["seed"] == 0 and "ur5_ik_drag.py" in manifest["files"]
 
 
 def test_finding_click_opens_the_run_and_moves_there_within_100_ms(qapp, window):

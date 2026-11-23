@@ -1,0 +1,23 @@
+# A seeded suite with one planted failure: the kd = 2 grid point overshoots (ST-02).
+name = "pid cart"
+
+[[scenario]]
+name = "step"
+scene = "pid_cart.py"
+duration = 4
+samples = 1
+seed = 3
+metrics = ["settling_time", "overshoot"]
+tolerance = 0.1
+criteria = [
+    "must_not: cart.x > 1.05",
+    "must: abs(err) < 0.02 for 0.5 s within 3 s",
+    { name = "speed limit", must_not = "abs(cart.v) > 3" },
+]
+
+[scenario.params]
+x0 = { uniform = [-0.1, 0.1] }
+noise = 0.002
+
+[scenario.grid]
+kd = [6.0, 2.0]
