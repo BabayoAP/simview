@@ -2,7 +2,21 @@
 
 Build, run, and visualize simulations of robots, vehicles, drones, and dynamic systems, in Python.
 
-> Status: M5b (run investigation: run catalog, scenarios, findings, reports, comparison, log import). See [docs/PRD.md](docs/PRD.md) for the milestone plan and [docs/PROGRESS.md](docs/PROGRESS.md) for where things stand.
+![Drone Delivery template: three quadrotors fly their routes while the plot tracks one drone's EKF position error against its 3-sigma bound](docs/media/hero_drone_delivery.gif)
+
+*Drone Delivery: three quadrotors with GPS + IMU EKFs fly depot → drop-off → depot in gusty
+wind; the plot shows one drone's estimation error against its 3σ bound.*
+
+![Autonomous Vehicle template: a car with lidar follows a curved road past traffic](docs/media/av_scenario.gif)
+
+*Autonomous Vehicle: a bicycle-model car with lidar and a camera follows the road and its NPC
+traffic.*
+
+> Status: M1–M9 are on `main` (physics and robots, viewport, plots and timeline, run
+> investigation, console, block editor, sensors and the aero/vehicle toolboxes, Monte Carlo and
+> RL). M10 (polish and hero demo) is in progress. See [docs/PRD.md](docs/PRD.md) for the
+> milestone plan, [docs/PROGRESS.md](docs/PROGRESS.md) for where things stand, and
+> [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the code fits together.
 
 ## Install and run
 
