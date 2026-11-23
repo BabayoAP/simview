@@ -6,8 +6,14 @@ from simview.ui.theme import tokens as t
 from simview.ui.theme.tokens import ThemeName
 
 
-def build_qss(theme: ThemeName) -> str:
+def build_qss(theme: ThemeName, combo_arrow: str | None = None) -> str:
     c = t.COLORS[theme]
+    arrow = (
+        f"QComboBox::down-arrow {{ image: url({combo_arrow}); "
+        f"width: {t.ICON_SIZE_INLINE}px; height: {t.ICON_SIZE_INLINE}px; }}"
+        if combo_arrow
+        else ""
+    )
     body = t.FONT_SIZE["body"]
     on_accent = c["text.on_accent"]
     return f"""
@@ -83,6 +89,31 @@ QLineEdit {{
     border-radius: {t.RADIUS_CONTROL}px;
     border: {t.FOCUS_RING}px solid {c["border.subtle"]};
     background: {c["bg.app"]};
+    selection-background-color: {c["accent.fill"]};
+    selection-color: {on_accent};
+}}
+QComboBox {{
+    min-height: {t.CONTROL_HEIGHT - 2 * t.FOCUS_RING}px;
+    padding: 0 {t.SPACING[1]}px;
+    border-radius: {t.RADIUS_CONTROL}px;
+    border: {t.FOCUS_RING}px solid {c["border.subtle"]};
+    background: {c["bg.app"]};
+}}
+QToolBar QComboBox {{
+    min-height: {t.CONTROL_HEIGHT_COMPACT - 2 * t.FOCUS_RING}px;
+}}
+QComboBox::drop-down {{
+    border: none;
+    background: transparent;
+    width: {t.SPACING[3]}px;
+}}
+{arrow}
+QComboBox:focus {{
+    border-color: {c["accent"]};
+}}
+QComboBox QAbstractItemView {{
+    background: {c["bg.elevated"]};
+    border: {t.HAIRLINE}px solid {c["border.subtle"]};
     selection-background-color: {c["accent.fill"]};
     selection-color: {on_accent};
 }}

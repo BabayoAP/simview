@@ -38,6 +38,20 @@ def test_qss_compiles_from_tokens(theme):
     assert set(HEX.findall(qss)) <= allowed
 
 
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_combo_box_has_frame_and_tinted_arrow(theme):
+    # M10 design QA: unstyled, the light-theme speed combo had no visible frame; styled, Qt
+    # drops the native arrow, so the theme ships a tinted chevron file for ::down-arrow.
+    from simview.ui.theme import _combo_arrow, svg_for
+
+    path = _combo_arrow(theme)
+    qss = build_qss(theme, path)
+    assert re.search(r"QComboBox \{[^}]*border:[^}]*" + tokens.COLORS[theme]["border.subtle"], qss)
+    assert f"image: url({path})" in qss
+    color = tokens.color(theme, "text.secondary")
+    assert Path(path).read_bytes() == svg_for("chevron-down", color)
+
+
 def test_no_hex_colors_outside_theme():
     offenders = []
     for path in UI_DIR.rglob("*.py"):

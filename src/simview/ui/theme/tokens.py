@@ -118,6 +118,7 @@ TEMPLATE_GLYPH: Final = 48
 # Icons.
 ICON_SIZE_TOOLBAR: Final = 16
 ICON_SIZE_START: Final = 20
+ICON_SIZE_INLINE: Final = 12  # small glyphs inside a control (combo box arrow)
 ICON_STROKE: Final = 1.5
 
 # Viewport (§7.5).
