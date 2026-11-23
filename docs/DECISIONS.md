@@ -1186,3 +1186,20 @@ unless that scene is the open one, inside the open project, or inside the SimVie
 (templates). **Scenarios:** numeric constants evaluate as float64, so `9**9**9**9` can't hang on
 Python big integers. Already safe, kept: `np.load(allow_pickle=False)`, no `eval`/`exec`/YAML/
 `shell=True`, the in-process IPython kernel (no sockets), HTML reports escape every name.
+
+**D-137 — Owner's answers to QUESTIONS_FOR_TOMORROW.md and PRD 1.5 approval (2026-11-22).**
+The owner approved PRD 1.5 and took the recommended default for all 15 questions:
+(1) §5.13–§5.17 approved as written, all kept out of MVP. (2) M12 after M11 builds ST-01–ST-03 and
+RP-01–RP-02 (they reuse RI and the sweep runner and make the hero demo checkable as a suite); added
+to §10. (3) Scenarios in Python and TOML (stdlib `tomllib`, no YAML). (4) Remote policies (PE-04,
+pyzmq) stay in v1. (5) NG5–NG7 kept; ROS 2 / PX4 bridges stay in BACKLOG.md. (6) VW-20 uses an
+optional `simview[video]` extra (`opencv-python-headless`), added to §8, not a core dependency.
+(7) The owner reruns the M10 benchmark on the Mac reference machine; results go in PROGRESS.md.
+(8) The pending visual checks are done on the current branch (M10 part 3). (9) RP-01 manifests
+record the git commit and machine info by default, with a flag to leave machine info out.
+(10) M10 parts 3–5 are finished before the M11 review. (11) The owner merges M8 (PR #2), then M9;
+the M10/M11 branches are then rebased or merged onto the new `main`. (12) PRD changes keep being
+proposed as drafts with nothing built until approved. (13) Git history is not rewritten; commits in
+this repo now use the GitHub noreply address (repo-local `user.email`). (14) Opening a `.svd` runs
+its Python Function blocks' files; kept, documented in SECURITY.md. (15) IPC keeps signed pickle;
+revisit only if a network mode (VW-33) arrives.

@@ -1,5 +1,7 @@
 # Questions for tomorrow (2026-11-23)
 
+> **Answered 2026-11-22:** the owner took the default for all 15 and approved PRD 1.5. See D-137.
+
 Short answers are fine. Each has a recommended default that will be used if you say "defaults".
 
 ## Product scope

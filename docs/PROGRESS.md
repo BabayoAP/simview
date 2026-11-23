@@ -499,6 +499,7 @@ Design: D-122–D-134; audit fixes D-135; security review D-136.
   saved-run replay of the perceived world.
 - Audit (912d931, 5699c71): 12 bugs fixed (runs closed on every exit path, pipeline default
   inputs, stream reset, uint16 index overflow guard, NaN/inf handling, dataset validation).
+- Screen check (2026-11-22, screen unlocked): GL tests 18/18 pass, including the 2 voxel tests. The Cameras and BEV Map docks render in both themes. With them, the bottom-right tab group has 5 tabs and every label was cut off ("Ru...", "Camer...") at 1600 px; dock tabs now use `SPACING[1]` padding and fit (`tests/ui/test_tokens.py`). PRD 1.5 approved and the 15 questions answered (defaults, D-137); M12 added to §10.
 - Security (d0b85b1): IPC messages signed with a per-session key (pickle only after the check),
   path containment for datasets / projects / Menagerie, confirm before a run log's scene runs,
   FrameSlot bounds checks, scenario power-operator DoS. `SECURITY.md` added.
