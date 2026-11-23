@@ -186,6 +186,9 @@ QTabBar::tab {{
     color: {c["text.secondary"]};
     border-bottom: {t.FOCUS_RING}px solid transparent;
 }}
+QMainWindow > QTabBar::tab {{
+    padding: {t.SPACING[1]}px {t.SPACING[1]}px;
+}}
 QTabBar::tab:selected {{
     color: {c["text.primary"]};
     border-bottom-color: {c["accent"]};
