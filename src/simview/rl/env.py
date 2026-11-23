@@ -134,7 +134,9 @@ class SimEnv(gym.Env):
         self.steps = 0
         obs_space = spec.get("observation_space")
         if obs_space is None:  # infer the shape from the start state
-            first = np.asarray(self.obs_fn(Sim(self.scene)), dtype=np.float32)
+            probe = Sim(self.scene)
+            first = np.asarray(self.obs_fn(probe), dtype=np.float32)
+            probe.close()
             obs_space = spaces.Box(-np.inf, np.inf, shape=first.shape, dtype=np.float32)
         self.observation_space = obs_space
 
@@ -151,6 +153,8 @@ class SimEnv(gym.Env):
         # Each episode is a fresh run with a seed drawn from the env's RNG: reset(seed=s)
         # repeats exactly, and sensor noise differs between episodes.
         self.scene.seed = int(self.np_random.integers(2**31 - 1))
+        if self.sim is not None:
+            self.sim.close()  # the previous episode's run ends (D-132)
         sim = Sim(self.scene)
         self.sim = sim
         if self.reset_fn is not None:
@@ -195,6 +199,12 @@ class SimEnv(gym.Env):
         if (terminated or truncated) and self.record_dir is not None:
             self._finish_episode(info.get("is_success"))
         return self._obs(), reward, terminated, truncated, info
+
+    def close(self) -> None:
+        """Gymnasium's close: ends the current episode's run (`Sim.close()`)."""
+        if self.sim is not None:
+            self.sim.close()
+        super().close()
 
     def _finish_episode(self, success: bool | None) -> None:
         """Write the episode's stats (and its log, if recorded) to the training folder."""

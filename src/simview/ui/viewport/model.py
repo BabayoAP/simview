@@ -238,3 +238,63 @@ def draw_geometry(draws: list[tuple], theme: ThemeName) -> DrawGeometry:
                 (p[0], np.asarray(data, dtype=float), resolve_color(color, theme))
             )
     return out
+
+
+# -- perceived voxels (VW-08) -----------------------------------------------------------------
+GEOMETRY_MODES = ("both", "perceived", "true")  # what the viewport shows (D-134)
+
+
+def colormap(
+    values: np.ndarray,
+    lo: float,
+    hi: float,
+    stops: tuple[str, ...] = tokens.VIRIDIS,
+) -> np.ndarray:
+    """(N,) values -> (N, 3) uint8 colors on a sequential map (viridis by default), clamped to
+    [lo, hi] and interpolated linearly between the stops."""
+    rgb = np.array([hex_rgb(s) for s in stops], dtype=np.float64)
+    v = np.asarray(values, dtype=np.float64).reshape(-1)
+    span = hi - lo if hi > lo else 1.0
+    x = np.clip((v - lo) / span, 0.0, 1.0) * (len(stops) - 1)
+    pos = np.linspace(0.0, len(stops) - 1, len(stops))
+    out = np.stack([np.interp(x, pos, rgb[:, c]) for c in range(3)], axis=1)
+    return np.rint(out).astype(np.uint8)
+
+
+def voxel_points(
+    centers: np.ndarray, z_range: tuple[float, float] = tokens.VOXEL_HEIGHT_RANGE
+) -> pv.PolyData:
+    """Occupied voxel centres as points with an "rgb" color by height: the input of the
+    viewport's cube glyph mapper (one GPU-instanced cube per point)."""
+    pts = np.ascontiguousarray(np.asarray(centers, dtype=np.float32).reshape(-1, 3))
+    poly = pv.PolyData(pts) if len(pts) else pv.PolyData()
+    if len(pts):
+        poly.point_data["rgb"] = colormap(pts[:, 2], *z_range)
+    return poly
+
+
+def voxel_cube(res: float) -> pv.PolyData:
+    """The cube drawn at each occupied voxel centre (a little smaller than the voxel)."""
+    side = float(res) * tokens.VOXEL_FILL
+    return pv.Cube(x_length=side, y_length=side, z_length=side)
+
+
+def voxel_mesh(
+    centers: np.ndarray,
+    res: float,
+    z_range: tuple[float, float] = tokens.VOXEL_HEIGHT_RANGE,
+) -> pv.PolyData:
+    """All the cubes as one mesh with per-cell "rgb" colors: what the glyph mapper draws,
+    built on the CPU (for tests and exports; the viewport instances them on the GPU)."""
+    pts = voxel_points(centers, z_range)
+    if pts.n_points == 0:
+        return pv.PolyData()
+    cube = voxel_cube(res)
+    n = pts.n_points
+    verts = (cube.points[None, :, :] + pts.points[:, None, :]).reshape(-1, 3)
+    faces = cube.faces.reshape(-1, 5)  # 6 quads: (4, a, b, c, d)
+    offs = (np.arange(n) * cube.n_points)[:, None, None]
+    quads = np.concatenate([np.full((n, 6, 1), 4), faces[None, :, 1:] + offs], axis=2)
+    mesh = pv.PolyData(verts, quads.reshape(-1))
+    mesh.cell_data["rgb"] = np.repeat(pts.point_data["rgb"], cube.n_cells, axis=0)
+    return mesh

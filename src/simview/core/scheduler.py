@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 from simview.core.draw import DrawList
@@ -45,12 +47,34 @@ class Sim:
         self.sensors = [(s, round(1.0 / (s.rate * self.dt))) for s in scene.sensors()]
         for s, _ in self.sensors:
             s.reset(self)
+        # VW-02/VW-04: camera streams and perception pipelines, stepped after sensors sample.
+        self.streams: dict[str, Any] = {}
+        for s, _ in self.sensors:
+            for name, stream in getattr(s, "streams", {}).items():
+                if name in self.streams:
+                    raise ValueError(f"stream name {name!r} is used twice")
+                self.streams[name] = stream
+        self.pipelines = [
+            (p, 1 if p.rate is None else round(1.0 / (p.rate * self.dt))) for p in scene.pipelines
+        ]
+        for p, _ in self.pipelines:
+            p.bind(self, self.streams)
         self._sample(force=True)
+        self._perceive(force=True)
 
     @property
     def t(self) -> float:
         # Integer tick count times dt: no drift from summing dt.
         return self.tick * self.dt
+
+    def close(self) -> None:
+        """End the run: pipelines finish their files (e.g. a `Record` dataset's index).
+        Safe to call more than once; only the first call closes the pipelines."""
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
+        for p, _ in self.pipelines:
+            p.close()
 
     def _sample(self, force: bool = False) -> None:
         due = [s for s, period in self.sensors if force or self.tick % period == 0]
@@ -60,6 +84,11 @@ class Sim:
             self.scene.world.kinematics()  # ray casts need this tick's geometry
         for s in due:
             s.sample(self)
+
+    def _perceive(self, force: bool = False) -> None:
+        for p, period in self.pipelines:
+            if force or self.tick % period == 0:
+                p.tick(self.t)
 
     def step(self) -> None:
         t = self.t
@@ -80,3 +109,5 @@ class Sim:
         self.tick += 1
         if self.sensors:
             self._sample()
+        if self.pipelines:
+            self._perceive()

@@ -916,6 +916,293 @@ are **simulated cameras and recorded image/depth datasets only**, with no new de
 and video files (VW-20, would need opencv) and depth from plain RGB (VW-21) are v1. The existing
 SN-02 camera already measures metric depth, so VW-01 reuses it rather than waiting for SN-04.
 
+**D-122 — Camera rigs and frame conventions (VW-01, M11 part A).** `sv.perception.CameraRig(cameras,
+rate=10, *, name="rig", pos, rpy, maxlen=64)` is a `Sensor` (attach with `ego.attach(rig)`, read as
+`ego.sensors.rig`); it holds SN-02 `Camera`s whose `pos`/`rpy` are in the rig's frame, samples them
+all at the rig's rate (each camera's own rate is ignored) and publishes one `Stream` per camera,
+named `<entity>.<camera>` (`rig.streams`, in camera order). Presets: `CameraRig.surround(n=8, *,
+width=160, height=120, rate=10, mount_height=1.4, max_range=60, name="rig")` = front_main (60°),
+front_narrow (35°), front_wide (120°) 1 m ahead; left_front/right_front (±75°, 90°), left_rear/
+right_rear (±135°, 90°), rear (180°, 90°), all 1.4 m up, no pitch; other n give an even ring.
+`CameraRig.drone(n=6, ...)` = front/left/back/right at 90° plus down and up (other n: an n-1 ring
+plus down). Conventions for every perception consumer: world frame, metres, Z up. A frame's `pose`
+is world-from-camera of the **OpenCV optical frame** (x right, y down, z forward;
+`SENSOR_FROM_OPTICAL` converts from SimView's sensor frame, x forward, y left, z up). `K` uses the
+OpenCV pixel convention (pixel (u, v)'s centre at (u, v), so cx = W/2 - 0.5); `camera_K(cam)`
+computes it (the SN-02 `Camera.intrinsics` property, cx = W/2, is unchanged). Depth is **float32
+z-depth** along the optical axis (the camera's range times the ray's cosine); inf, nan or 0 = none.
+`rig.camera_pose(name)` and `rig.intrinsics(name)` give a camera's pose and K.
+
+**D-123 — Streams (VW-02).** `Stream(name, maxlen=64)`: `push(item, t) -> seq`, `latest()`,
+`seq`, `t`, `items(after)`, `reader()`. A `Reader` (one per consumer) has `since_last()` (every
+item since its last read), `latest()` (newest; skipped items count), `dropped`, `pending`. Items
+are anything: camera streams carry `Frame(t, seq, source, K, pose, rgb, depth=None, ego=None)`
+(`ego` = the vehicle's 4x4 world pose); pipeline outputs carry their stage's result. Grid streams
+carry the **same live `OccupancyGrid` object** every step (use `grid.copy()` to keep a snapshot).
+Wiring (additive only): `scene.add_pipeline(p)` (rate checked like controllers, unique names),
+`scene.pipelines`, `sim.streams` (every rig and pipeline stream, built when the `Sim` starts),
+`ctx.streams` in controllers. Order inside a tick: controllers, integration, sensors sample (rigs
+publish frames), then the pipelines due at that tick; also once at start after the first sample.
+So a controller at tick k sees the grid fused from frames up to tick k, and nothing is lost.
+
+**D-124 — Pipelines (VW-04).** `Pipeline(stages, *, rate=None, inputs=None, name="perception",
+maxlen=64)`; `inputs` is a rig, a stream name, a `Stream`, or a list (None = every stream in the
+run except its own). A step runs only if new input arrived; stage 0 gets the list of new items
+ordered by input stream then sequence number; each later stage gets the previous output; None
+stops the chain. Each stage publishes `<name>.<output>`, where `output` is the stage's `output`
+attribute (`cloud`, `occupancy`, `bev`, `record`) or the callable's `__name__`; a stage's
+`reset()` is called when a run starts. `pipeline["occupancy"]` / `pipeline.outputs` give the
+streams, `pipeline.latest()` their newest items. Offline, `pipeline.run(dataset_or_frames,
+speed=None)` resets the stages and groups frames into the steps a run would have used (step k =
+frames with ceil(t·rate) = k; rate None = one step per distinct t; ties in dataset camera order),
+returning `{stream name: last item}`. A run exported with `Record` and replayed this way gives a
+byte-identical grid (tested).
+
+**D-125 — Back-projection (VW-05).** `BackProject(max_range=40, *, min_range=0, stride=2,
+ego_box=None) -> PointCloud(t, points (N,3) float64, colors (N,3) uint8, origins (C,3),
+origin_index (N,), ego)`. Range is the Euclidean distance from the camera. Strided pixels start at
+(0, 0). In a sim the ray caster already skips the rig's own body (SN-02); `ego_box=((xmin, ymin,
+zmin), (xmax, ymax, zmax))` in the vehicle frame also masks the vehicle in recorded data (needs
+frames with `ego`). Pixels with no depth are dropped (they don't clear free space).
+
+**D-126 — Occupancy grid (VW-06).** `OccupancyGrid(res=0.2, extent=60, *, height=(0, 4),
+center=(0, 0), rolling=False, floor=0.1, l_occ=0.85, l_free=-0.4, clamp=(-2, 3.5), decay=0)`.
+`extent` is the horizontal size (a number = square, or (x, y)); `height` the z range. Arrays:
+`logodds` (float32, (nx, ny, nz); [i, j, k] is the voxel with lower corner origin + (i, j, k)·res)
+and `seen` (bool). Per update each voxel changes at most once (OctoMap-style; a hit wins over a
+pass-through); free space is traced by sampling every ray at `res` spacing, all rays at once in
+NumPy (float32 voxel coordinates). Occupied = log-odds > 0, free < 0, unknown = 0. `floor`: hits
+below it are ground; they clear space but never occupy, so the ground doesn't block planners
+(None turns it off). `decay` scales values toward 0 each update and snaps |L| < 0.01 to 0.
+`rolling` re-centres on the cloud's ego pose (else the mean camera origin) in whole voxels,
+keeping the overlap. Queries: `occupied(points)`, `is_free(a, b)` (unknown counts as free),
+`nearest_obstacle(pos, within=inf) -> float` (to voxel centres; a 2-element pos measures
+horizontally over all heights), `closest_occupied(pos, within)`, `occupied_centers()`,
+`occupancy`, `probability`, `bounds`, `copy()`, plus `t`, `version` (update count) and `ego`.
+Benchmark (Windows dev box, i7-10700K): one 8-camera 160×120 rig frame casts in ~30 ms,
+back-projects (stride 2, ~18k points) in ~3 ms and fuses into a 60 m × 60 m × 4 m grid at 0.2 m in
+~50 ms; a box scene with that rig at 10 Hz runs headless at ~1.08× real time. R8 levers: `stride`
+(3 roughly halves fusion), rig size and rate.
+
+**D-127 — BEV map (VW-07).** `BevMap(z_band=(0.2, 2.5)) -> Bev(t, occupied (nx,ny) bool, known
+(nx,ny) bool, height (nx,ny) float32 = top of the highest occupied voxel in the band or nan, image
+(ny, nx, 3) uint8, origin (x, y), res, ego)`; `bev.pixel(x, y) -> (row, col)`. Arrays index like
+the grid ([i, j] = x, y); the image is the map seen from above, +x right, +y up (row 0 = largest
+y). Image values are data, not UI styling: unknown 128, free 255, occupied 96 (low) to 0 (tall),
+gray in all three channels; a UI may recolor from the arrays.
+
+**D-128 — Dataset format and PNG I/O (VW-03).** Folder: `cameras.json` + `<camera>/rgb/NNNNNN.png`
+(8-bit RGB) + `<camera>/depth/NNNNNN.npy` (float z-depth, metres) or `.png` (16-bit gray,
+millimetres, 0 = none). `cameras.json` = `{"format": "simview-dataset", "version": 1, "cameras":
+[{"name", "width", "height", "K" (3x3), "frames": [{"t", "seq"?, "pose" (4x4 world-from-optical),
+"rgb", "depth"?, "ego"? (4x4)}]}]}`, paths relative to the folder; K and pose follow D-122.
+Required fields, matrix shapes, rigid poses, non-decreasing times and file existence are checked
+on open (`DatasetError`, a `ValueError` naming the camera, frame and field); image sizes when a
+frame is read. `Dataset(path)`: `cameras`, `frames()` (time order, ties in camera order),
+`replay(speed=None)` (1.0 = recorded rate, 2.0 = twice as fast, None = as fast as possible; also
+pushes into `dataset.streams[camera]`), `len`, `duration`. Writing: `DatasetWriter(path,
+depth="npy"|"png16")` with `add(frame)`, `flush()`, `close()`; `write_dataset(path, frames)`; and
+the pipeline stage `Record(path, depth="npy")`, which exports a run's camera streams (images
+written as they arrive, cameras.json rewritten each step, so the folder is valid if the run
+stops). The camera name is the frame's source (e.g. `ego.front_main`). `npy` is the default
+because it keeps float32 depth exactly (byte-identical replay); `png16` is compact but rounds to
+1 mm. PNG I/O is a small NumPy + zlib codec (`simview.perception.png`: writes unfiltered RGB8 /
+Gray16; reads 8/16-bit gray, gray+alpha, RGB and RGBA with all five filters, no interlacing), so
+there is no imaging dependency (D-121; Pillow is only a transitive dependency and isn't used).
+
+**D-129 — Accuracy against ground truth (VW-10).** `evaluate(grid, scene, *, z_band=None,
+radius=None, pos=None, exclude=(), observed_only=True) -> Accuracy(iou, precision, recall,
+nearest_error, nearest_true, nearest_perceived, tp, fp, fn)`; `truth_grid(grid, scene, exclude)`
+gives the true voxels. Truth = voxels whose volume overlaps a MuJoCo geom (tested at the voxel
+centre against the shape grown by half a voxel, strictly, so a voxel that only touches a face
+doesn't count): boxes, spheres, capsules, cylinders, ellipsoids; meshes and other types by their
+bounding box; planes and height fields are ground and skipped; `exclude` drops entities' bodies
+(and their children), e.g. the ego proxy. Scores count only voxels the grid has observed (cameras
+can't see inside or behind solids), within `z_band` and within `radius` m (horizontal) of `pos`
+(default: the grid's ego position). Nearest distances are from `pos` to the nearest true /
+occupied voxel centre in the band. On the 4-box test scene a still 8-camera 160×120 surround rig
+reaches IoU 0.89 within 20 m at 0.2 m voxels (M11 target ≥ 0.7). Logging the metrics as run
+signals is left to the VW-09 logging work.
+
+**D-130 — `sv.perception` registration.** Perception is core (`src/simview/perception/`, PRD
+§8.4) but is reached as `sv.perception` through the built-in toolbox `perception`
+(`simview.toolboxes.builtin:perception`, in `registry.BUILTINS` and the pyproject entry points),
+which also registers `CameraRig` as a toolbox sensor (`sv.sensors.CameraRig`). `"perception"` is
+in `simview.__all__`, like the other built-in toolbox modules.
+
+**D-131 — Logging and replay of perceived worlds (VW-09, M11 part B).** A `Pipeline` with an
+`OccupancyGrid` stage logs with the run, configured by new keyword arguments (defaults keep
+part A's behaviour otherwise): `entity=None, signals=True, iou_radius=None, snapshot_every=0.5,
+camera_every=None`. **Signals** (added to `scene.channels` by `scene.add_pipeline`, so they are
+ordinary Parquet columns that plots and RI scenarios read): `<entity>.perception.min_obstacle_dist`
+(m, horizontal distance from the grid's ego position, i.e. the vehicle origin, to the nearest
+occupied voxel centre over all heights; **NaN** while nothing is occupied, so plots break the line
+and scenario comparisons are false), `<entity>.perception.occupied_voxels`, and with `iou_radius`
+`<entity>.perception.iou` = `evaluate(grid, scene, z_band=(0.2, 2.5), radius=iou_radius,
+exclude=[entity])` (recomputed at most every 0.5 s because it reads every geom; it scores, the
+planner never sees it). `entity` defaults to the input rig's entity, else the pipeline name.
+Values are cached per grid update. **Snapshots** (every `snapshot_every` s of sim time, at the
+first pipeline step at or after each due time, so t = 0, 0.5, 1.0 ... at 10 Hz) are kept in memory
+and written once when `sv.run` ends to `<run>.perception/<pipeline>.parquet` beside the log (a
+folder, so `Catalog`'s `*.parquet` glob doesn't list it as a run): one row per snapshot with `t`,
+`version`, `res`, `origin` (3), `shape` (3), `voxels` (list<uint16>, the occupied (i, j, k)
+flattened), `bev_origin`, `bev_res`, `bev_shape` (ny, nx) and `bev` (the gray BEV image bytes;
+D-127 colours are gray, so one channel is stored). **Camera frames** (every `camera_every` s,
+default off) go to `<pipeline>.cameras.parquet`: `t`, `camera`, `width`, `height`, `rgb` bytes
+(no depth). Parquet because the run log already relies on `pq.write_table` being byte-identical
+for identical data (NF-06, tested on both files); npz was rejected because zip entries carry
+timestamps. **Reader** (for the UI's timeline scrubbing): `sv.perception.load_snapshots(run,
+pipeline=None) -> Snapshots` (`run` = log path or `Run`; None = the only/first pipeline);
+`Snapshots.times`, `len`, `[i]`, `index_at(t)`, `at(t) -> Snapshot | None` (newest at or before
+t), `cameras`, `camera_at(camera, t) -> CameraFrame | None`; `Snapshot(t, version, res, origin,
+shape, indices (N,3), bev (ny,nx,3) uint8 | None, bev_origin, bev_res)` with `.centers` and
+`.occupancy()`; `snapshot_pipelines(run)`, `perception_dir(run)`. Sweeps delete the folder with a
+trial's log unless logs are kept. Live GUI sessions don't write side files yet (the UI part
+decides when a session's run is saved); `PerceptionLog.write(path)` / `runlog.write_snapshots`
+are the hooks for that.
+
+**D-132 — `Record` writes its index at the end (VW-03 perf fix).** Part A's `Record` rewrote
+cameras.json every step (quadratic in run length). Now images are still written as frames arrive,
+but cameras.json is written when the run ends (`Sim.close()`, new, called by `sv.run`; it calls
+each pipeline's new `close()`, which calls stages' `close()`), every `flush_every` steps
+(`Record(path, depth, *, flush_every=100)`, None = only at the end), and by a `weakref.finalize`
+when the stage is reset or collected, so a dropped live session still leaves a valid folder. A
+dataset read while a run is still going may lag up to `flush_every` steps. Replay stays
+byte-identical (tested through `Sim.close()` and through `sv.run`).
+
+**D-133 — `vision_drive` template and the M11 checks (VW-11).** Registered as a fifth start-screen
+card by the built-in `perception` toolbox (`add_template`, icon "eye"); the 4 flagship cards are
+unchanged. Scene: the UC-1 road (110 m straight, 60 m-radius quarter arc, 60 m straight, 2
+lanes), the UC-1 kinematic bicycle with `CameraRig.surround(8, 160x120, 10 Hz)` and no lidar,
+pipeline `ego` = `BackProject(max_range=30, stride=3)` → `OccupancyGrid(0.2 m, 60 m rolling,
+height 0-3 m)` → `BevMap()`, with `iou_radius=20`. Obstacles: 4 parked cars on the right
+shoulder, a pedestrian-sized box (0.6 x 0.6 x 1.7 m) in the ego lane, a stalled `ScriptedNPC`
+(speed 0) in the ego lane, and, in every 4th layout, a barrier across the left lane next to it so
+the car must stop. All obstacles are static (simplest reading of "static and slow"; a moving
+object would leave a trail in a grid without decay). **Seeding:** the obstacle layout must exist
+before the MuJoCo world compiles, but `load_scene(seed=)` sets the seed after the file runs, so
+the jitter is driven by a scene parameter `layout` (0 = nominal, others jitter positions with
+`default_rng(layout)`; `layout % 4 == 3` adds the barrier); the 20-run test sweeps `layout` 0-19
+(seeds 0-19 too). **Planner** (10 Hz): reads only `ctx.streams["ego.occupancy"]` plus the ego's
+own state and the lane map (map data, not obstacle geometry); occupied voxels between 0.3 and
+2.2 m are put in lane-0 coordinates, corridors 1.4 m either side of each lane centre are checked;
+it changes to the left lane when its lane is blocked within 28 m and the left lane is clear
+further, returns when its lane is clear from 7 m behind to 20 m ahead, and sets speed from the
+gap ahead (standoff 4 m, headway 1.2 s, 3 m/s² braking). **Checks:** (a) 20 of 20 layouts: no
+overlap between the ego footprint and any box geom's true footprint at any tick (separating
+axes, in the test only); the 15 open layouts pass the stalled car and end back in lane, the 5
+blocked ones stop; (b) IoU: each run's time-averaged `ego.perception.iou` ≥ 0.7 (observed:
+about 0.85; single early samples, with the car still and few views, are lower, ~0.45-0.65);
+(c) replay: D-132; (d) RTF on the dev box (i7-10700K): 1.25x median for a 14 s run
+(`benchmarks/vision_bench.py`). With part A's stride 2 and 35 m range it ran at 0.82x, so stride
+3 and a 30 m back-projection range (obstacles are still seen ≥ 30 m ahead, enough to change lanes
+at 10 m/s) are the trade-off: about half the rays, a slightly sparser grid. The 20-run sweep
+(parallel processes, ~75 s) is marked `slow` (new marker; runs by default, `-m "not slow"` skips
+it).
+
+**D-134 — Perception views and replay in the app (VW-08, VW-09 UI half, M11 part C).**
+**IPC (§8.5):** `simview.ipc.perception`. In the sim process `PerceptionOut` runs on every state
+publish (≤ 120 Hz wall): each pipeline's newest occupied voxel centres (float32 (N, 3)) and BEV
+image (gray (ny, nx) uint8; metadata t, origin, res, ego (x, y, yaw)), and each `CameraRig`
+camera's newest image (decimated by an integer stride to ≤ 320 px wide), are copied into that
+stream's own `FrameSlot` (new in `ipc/shm.py`: a seqlocked shared-memory block, header + 8 float64
+metadata + bytes; a frame that outgrows its slot gets a new slot 1.5× its size). One ZMQ event
+`{"event": "frames", "frames": [(stream, kind, shm name, seq), ...]}` names what changed. The UI's
+`PerceptionIn` (on `SimClient.perception`) only notes the events and reads each slot once per UI
+frame, so a slow UI skips to the newest frame. The pipelines' logged rows (D-131 snapshots and
+camera frames) go to the UI as `{"event": "snapshots", "pipeline", "snapshots", "frames"}` as they
+are logged: that is the live session's scrubbable history (cheap: 2 Hz by default). Pickled ZMQ
+was kept for these rows because they are small and must all arrive (a slot would drop them).
+`Description` gains `cameras` (camera stream names) and `pipelines` (name → ego entity).
+**Snapshot format:** D-131's table gains a nullable `ego` column (x, y, yaw of the grid's ego
+pose) for the BEV marker; `Snapshot.ego` defaults to None, so older logs still load.
+`runlog.write_rows` / `snapshot_table` / `camera_table` are shared by `PerceptionLog.write` and
+the app. **Viewport:** voxels are one `vtkGlyph3DMapper` (GPU-instanced cube of 0.92 × res per
+centre, "rgb" point colors from height over 0-3 m on viridis, `tokens.VIRIDIS`, 9 stops linearly
+interpolated); `set_voxels(centers, res)` swaps the mapper's input in place. Perceived vs true
+geometry is a view mode `both` / `perceived` (voxels; scene geoms, edges and visuals hidden;
+grid, markers and trails stay) / `true`, in the View menu and the command palette (three actions
+plus "Cycle Perceived / True Geometry"), not a heads-up toolbar button (the toolbar's buttons
+are two-state; a third state there was the less simple reading). **Panels:** new docks
+`cameras` ("Cameras": thumbnail grid, click to enlarge, click again or Back to return) and `bev`
+("BEV Map": the image scaled to fit, nearest-neighbour, ego as an `accent` arrow), tabbed after
+Training in the bottom-right group; `LAYOUT_VERSION` 5. Empty states: "This scene has no camera
+rig." / "This scene has no perception pipeline." with "Open Template…" (the start screen has the
+vision_drive card). Only the scene's first pipeline is shown (simplest reading; one pipeline per
+scene in every template). **Replay:** at the live end the views show the newest live frames;
+anywhere else on the timeline they show the snapshot at or before that time, from the in-memory
+history (live session) or `load_snapshots(run)` (an opened saved run). Cameras follow the
+timeline only from logged camera frames: with `camera_every` off (the default, also in
+vision_drive) the thumbnails show "No camera frame logged at this time" when scrubbing.
+`save_live_run` writes the session's rows with `write_rows` to `<run>.perception/`, so a
+reopened run shows the same snapshots. **Pending a real display:** `tests/ui/test_viewport_gl.py`
+`test_voxels_render_and_toggle_perceived_vs_true` and `test_50k_voxels_render_at_30_fps` (the
+VW-08 ≥ 30 FPS @ 50k criterion) are written but were not run (the dev box's screen was locked;
+run `QT_QPA_PLATFORM=windows SIMVIEW_GL=1 pytest -m gl tests/ui/test_viewport_gl.py`), plus a
+manual look at the vision_drive template: voxel colors, the BEV arrow's heading, thumbnail
+grid, light theme.
+
+**D-135 — M11 audit: edge-case behaviour (VW-02..VW-09).** Decisions taken while fixing bugs
+found in the M11 review. **Default pipeline inputs:** `Pipeline(inputs=None)` reads only the
+sensors' (camera rig) streams, not other pipelines' outputs (D-124 said "every stream except
+its own", which fed a second pipeline the first one's grids and crashed `BackProject`; the
+docstring already said "every camera stream"). **Readers after a reset:** `Stream.reset()` bumps
+`stream.epoch`; a `Reader` that sees a new epoch starts again from the first item (before, a
+reader kept its old cursor and missed every item of a replayed dataset). **Occupancy input:**
+points or camera origins that aren't finite are dropped before fusion (inf cast to a huge ray
+length on ARM); a rolling grid with no ego pose and no camera origins doesn't move; grids of
+2^31 voxels or more use int64 flat indices in ray tracing. **Snapshots:** voxel indices are
+uint16 (D-131), so a pipeline that logs snapshots refuses, when it is built, an
+`OccupancyGrid` with more than 65535 voxels along an axis (`snapshot_every=None` lifts it).
+**Closing runs:** `Sim.close()` is idempotent and now also runs when `sv.run` fails, when the
+sim process reloads a scene or its loop crashes (which also unlinks the shared memory), at each
+RL episode reset and `env.close()`, and at the end of an offline `Pipeline.run()`. **Datasets:**
+`cameras.json` with another `format`, or a `version` other than 1, is refused; `seq` must be an
+integer and `t`/`width`/`height` not booleans; damaged PNG/NPY files and non-numeric depth
+arrays are `DatasetError`s naming the file; `DatasetWriter.add` refuses a frame whose size
+differs from the camera's earlier frames, whose depth isn't the image's size, or whose time is
+not finite or goes back, so the writer can't produce a folder `Dataset` rejects. **Truth for
+meshes:** the search window around a mesh's bounding box uses the box's own radius (the geom's
+`rbound` is about its origin, not the box centre). **UI:** a damaged perception side file no
+longer stops a saved run from opening; the status bar says the snapshots weren't loaded.
+
+**D-136 — Security review: trust boundaries and hardening.** Scene files, editor scripts,
+toolboxes, projects (they load a scene), and block diagrams with Python Function blocks (the
+editor runs or imports the function a block names to read its ports) are code and run with the
+user's permissions by design; `SECURITY.md` says so. Data is never executed. **IPC:** the
+UI's ZeroMQ PAIR socket stays on 127.0.0.1 at a random port; messages are still pickled (numpy
+arrays, dataclasses), but every message is signed with HMAC-SHA256 under a 32-byte random key
+made per sim process and passed to it through `multiprocessing` (not its command line), and a
+message without a valid signature is dropped before it is unpickled (`protocol.send/recv`
+replace `send_pyobj/recv_pyobj`). Another local process can still take the port first and
+stop the session starting (denial of service only). **Shared memory:** `FrameSlot.read()`
+returns None for a header whose size, dtype code, rank, or shape doesn't fit the slot; a segment
+smaller than the header is refused. **Paths:** `cameras.json` frame files and a project's
+`scene`/`script`/`diagram` must be relative paths that resolve inside their folder (absolute
+paths and `..` escapes are refused, as `DatasetError`/`ProjectError`); `DatasetWriter` camera
+names can't contain `:`; a Menagerie MJCF that references a file outside the robot's folder
+is refused. **Replaying a run** loads the scene file its metadata names: the app asks first
+unless that scene is the open one, inside the open project, or inside the SimView package
+(templates). **Scenarios:** numeric constants evaluate as float64, so `9**9**9**9` can't hang on
+Python big integers. Already safe, kept: `np.load(allow_pickle=False)`, no `eval`/`exec`/YAML/
+`shell=True`, the in-process IPython kernel (no sockets), HTML reports escape every name.
+
+**D-137 — Owner's answers to QUESTIONS_FOR_TOMORROW.md and PRD 1.5 approval (2026-11-22).**
+The owner approved PRD 1.5 and took the recommended default for all 15 questions:
+(1) §5.13–§5.17 approved as written, all kept out of MVP. (2) M12 after M11 builds ST-01–ST-03 and
+RP-01–RP-02 (they reuse RI and the sweep runner and make the hero demo checkable as a suite); added
+to §10. (3) Scenarios in Python and TOML (stdlib `tomllib`, no YAML). (4) Remote policies (PE-04,
+pyzmq) stay in v1. (5) NG5–NG7 kept; ROS 2 / PX4 bridges stay in BACKLOG.md. (6) VW-20 uses an
+optional `simview[video]` extra (`opencv-python-headless`), added to §8, not a core dependency.
+(7) The owner reruns the M10 benchmark on the Mac reference machine; results go in PROGRESS.md.
+(8) The pending visual checks are done on the current branch (M10 part 3). (9) RP-01 manifests
+record the git commit and machine info by default, with a flag to leave machine info out.
+(10) M10 parts 3–5 are finished before the M11 review. (11) The owner merges M8 (PR #2), then M9;
+the M10/M11 branches are then rebased or merged onto the new `main`. (12) PRD changes keep being
+proposed as drafts with nothing built until approved. (13) Git history is not rewritten; commits in
+this repo now use the GitHub noreply address (repo-local `user.email`). (14) Opening a `.svd` runs
+its Python Function blocks' files; kept, documented in SECURITY.md. (15) IPC keeps signed pickle;
+revisit only if a network mode (VW-33) arrives.
 
 **D-138 — NF-01 measurement (M10).** NF-01's scene is built in `tests/ui/test_viewport_gl.py`
 (`test_nf01_...`): 20 quadrotors with box shapes and trails, a 50k-point cloud, 1280×720 with 4×

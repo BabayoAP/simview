@@ -1,6 +1,6 @@
 # SimView — Product Requirements Document
 
-**Version:** 1.4 · **Status:** Ready to build · **Owner:** Harrison
+**Version:** 1.5 · **Status:** Ready to build · **Owner:** Harrison
 
 **Changes in 1.1 (2026-11-18, approved by the owner):** added §5.10 Robotics depth (RB) and milestone
 **M3b: Robotics depth** before M4, which also finishes TB-ROBOT. Updated §8.3, §8.4, §9, §10, and §12.
@@ -24,6 +24,13 @@ input/output frame streams, §8.5 (perception streams in the architecture), the 
 occupancy part moved up to MVP in §9, and milestone **M11: Vision world model** after M10. MVP
 inputs are simulated cameras and recorded image/depth datasets, with no new dependencies; webcam,
 video files and depth from plain RGB are v1. See DECISIONS D-121.
+
+**Changes in 1.5 (2026-11-22, approved by the owner the same day):** added five areas drawn from how
+robotics, AV and drone teams work today, all tagged `[v1]` or `[Future]` (none MVP; ST-01–ST-03 and RP-01–RP-02 are built as
+milestone M12; no new core dependencies): §5.13 Scenario testing and regression gates (ST), §5.14 Sim-to-real:
+randomization, faults and calibration (SR), §5.15 Policy evaluation (PE), §5.16 Synthetic data
+(SD), and §5.17 Reproducibility and review (RP). Less certain ideas are parked in
+[BACKLOG.md](BACKLOG.md). No existing requirement changed. The owner's answers to the open questions are D-137.
 
 ---
 
@@ -383,7 +390,7 @@ plain RGB is v1. Grids use metres, the world frame, and Z up.
 | VW-09 | Logging and replay: pipeline outputs are logged with the run (occupancy as sparse voxel snapshots and BEV images at a set interval, camera frames decimated or off), plus scalar signals (`<entity>.perception.min_obstacle_dist`, occupied voxel count). Scrubbing the timeline shows the perceived world at that time, and RI scenarios can use the scalar signals. | MVP |
 | VW-10 | Accuracy against ground truth: `sv.perception.evaluate(grid, scene)` gives voxel IoU, precision, recall, and nearest-obstacle distance error against the scene's true geometry, also loggable as signals during a run. | MVP |
 | VW-11 | Vision-only control: template `vision_drive` (UC-6): the UC-1 ego with an 8-camera surround rig and no lidar follows its lane and brakes or steers around static and slow obstacles using only the occupancy grid. | MVP |
-| VW-20 | Live webcam and video-file input streams (needs a video-reading dependency). | v1 |
+| VW-20 | Live webcam and video-file input streams, through an optional extra (`pip install simview[video]`, `opencv-python-headless`), not a core dependency. | v1 |
 | VW-21 | Depth from plain RGB: a pretrained monocular depth model on the PyTorch extra turns ordinary camera or dashcam video into depth streams, with scale from known camera height or odometry. | v1 |
 | VW-22 | Stereo depth from camera pairs (block matching) as a pipeline stage. | v1 |
 | VW-23 | Semantic occupancy: per-voxel classes from the semantic-segmentation camera (SN-04). | v1 |
@@ -392,6 +399,89 @@ plain RGB is v1. Grids use metres, the world frame, and Z up.
 | VW-31 | Real-scene reconstruction: turn a recorded dataset into scene geometry (mesh or Gaussian splats) that SimView can simulate in and re-render from new viewpoints. | Future |
 | VW-32 | Neural world simulator: a learned model that predicts future camera frames from actions, for closed-loop testing of vision policies. | Future |
 | VW-33 | External streams: publish and subscribe to streams over the network and ROS 2 topics, so a real robot's cameras or an external perception stack can plug in live. | Future |
+
+### 5.13 Scenario testing and regression gates (ST)
+
+*Since 1.5.* Today a user can sweep parameters (SE-08) and scan runs for patterns (RI-02),
+but cannot say "this planner must pass these 30 situations" and get a yes/no answer that runs in CI.
+AV and drone teams work exactly this way: scenario-based testing (as in ASAM OpenSCENARIO), with
+pass/fail criteria, coverage of the parameter space, and a regression gate on every change. Without
+it, a planner regression shows up only if someone happens to watch the right run. This section
+reuses the sweep runner, scenario expressions, run reports and run comparison that already exist.
+
+| ID | Requirement | Acceptance | Tag |
+|---|---|---|---|
+| ST-01 | Test scenarios: a scene plus named parameters (ranges, lists, or distributions; e.g. NPC cut-in distance 5–30 m, gust 0–8 m/s), initial conditions, duration, and pass/fail criteria written as RI-02 expressions (`must_not: ego.min_ttc < 1.0 for 0.1 s`, `must: drone_1.delivered within 120 s`). Defined in Python or a TOML file (stdlib `tomllib`). | A scenario with 2 parameters and 3 criteria loads from TOML and from Python, runs, and returns pass/fail per criterion; each failure carries its RI-03 evidence window. | v1 |
+| ST-02 | Test suites and CLI: `simview test suite.toml` runs every scenario over its parameter samples in parallel (SE-08), exits non-zero on any failure, and writes a JUnit XML file (stdlib `xml`) and an RI-04 HTML report. | On a seeded suite with one planted failing case, the exit code is 1, the JUnit file names that case and criterion, and the same command gives the same result twice. Runs headless on all 3 OSes. | v1 |
+| ST-03 | Baselines and regression gate: save a suite's results as a baseline; later runs report new failures, newly passing cases, and metric drifts beyond a set tolerance (using RI-05). | Lowering a PID gain so settling time worsens >10% is flagged as a regression naming the scenario and metric; re-running an unchanged model reports zero differences. | v1 |
+| ST-04 | Coverage view: per scenario, the parameter space shown as a pass/fail scatter or grid (DA-06 style), with untested regions marked. | For UC-1 cut-in distance × speed, the map shows the pass/fail boundary; clicking a point opens that run. | v1 |
+| ST-05 | Falsification search: search a scenario's parameter space for the worst case (smallest margin on a criterion) with SciPy optimizers (e.g. differential evolution), seeded, instead of a fixed grid. | On a toy scenario whose failure region is 0.1% of the space, finds a failure within 200 runs in ≥8 of 10 seeds (random sampling: about 2 of 10). | Future |
+
+### 5.14 Sim-to-real: randomization, faults and calibration (SR)
+
+*Since 1.5.* A controller tuned in a perfect sim often fails on hardware because masses,
+friction, sensor noise and delays differ from the model. The standard answers are domain
+randomization (train and test across varied physics), fault injection (check behaviour when a
+sensor or motor misbehaves), and calibrating the sim to real logs (system identification). SimView
+already imports real logs (RI-06), runs seeded sweeps, and stays deterministic, so it has most of the
+pieces; what is missing is a declared, logged way to vary and break the world and to fit it to data.
+
+| ID | Requirement | Acceptance | Tag |
+|---|---|---|---|
+| SR-01 | Domain randomization: `scene.randomize({...})` declares distributions over physical and sensor parameters (mass, friction, damping, motor constant, sensor noise and bias, sensor and actuator delay, wind, camera intrinsics and mount jitter). Each run or RL episode reset samples them from the run's seeded RNG, and the sampled values are stored in the run metadata (RI-01). | Same seed → byte-identical logs (NF-06). 1000 resets give sample statistics consistent with the declared distributions. Works through `make_env` and SE-08. | v1 |
+| SR-02 | Fault injection: timed or random faults declared on the scene: sensor dropout, frozen value, bias step, noise burst, GPS outage, stuck actuator, loss of thrust on one rotor, command delay. Each fault is logged as an event so RI scenarios can find it. | One test per fault type shows the expected signal effect in the declared window, reproducible by seed. The UC-2 template ships a "GPS outage 10 s" example. | v1 |
+| SR-03 | Log-driven replay: feed a real log's recorded commands into the sim model open loop and plot sim vs real for each mapped signal with RMSE (DA-05). | Replaying a log that the sim itself produced gives zero error; a real CSV log shows per-signal error in the plot panel. | v1 |
+| SR-04 | System identification: fit chosen model parameters to a real log by least squares over the SR-03 replay (`scipy.optimize.least_squares`); report fitted values with uncertainty and before/after error; save them as a parameter set the scene can load. | On a synthetic quadrotor log with known mass and drag plus noise, recovers both within 5%. A 60 s log at 100 Hz fits headless in under 2 minutes. | v1 |
+| SR-05 | Sim-to-real gap report: for one scenario, compare a batch of sim runs with a set of real logs per metric (distribution overlap, mean shift) in an RI-04 report. | A report with a planted 20% drag mismatch ranks drag-sensitive metrics first. | Future |
+
+### 5.15 Policy evaluation (PE)
+
+*Since 1.5.* ML-01–ML-04 cover training. Teams then need to answer "is checkpoint B
+better than A, and where does it fail?" with statistics over fixed seeds, not one lucky replay.
+More and more policies also come from outside the training loop: large pretrained models,
+including vision-language-action (VLA) models that take camera images plus a text instruction and
+usually need their own GPU process. SimView needs one way to plug any policy in and grade it on the
+same seeded episodes, reusing ST scenarios, the run catalog and the replay tools.
+
+| ID | Requirement | Acceptance | Tag |
+|---|---|---|---|
+| PE-01 | Policy interface: an `sv.Policy` protocol (`reset(info)`, `act(obs) -> action`, optional text `instruction`), with adapters for Stable-Baselines3 models, plain Python callables, and PyTorch modules (on the existing extras). Observations can include camera frames from streams (VW-02). | One harness evaluates an SB3 PPO model, a hand-written PID callable, and a dummy image-and-instruction policy with no code changes. | v1 |
+| PE-02 | Evaluation runs: `simview eval <policy> --suite ...` runs N seeded episodes per scenario in parallel and reports success rate with 95% confidence intervals (Wilson), return, and criterion margins. Every episode is a normal run in the catalog. | 100 drone-landing episodes produce a table with intervals; the same seeds give an identical table. | v1 |
+| PE-03 | Checkpoint comparison: compare two or more policies on the same seeds (paired), flag differences that are statistically significant, and list episodes where one succeeds and another fails, each clickable (RI-03). | Comparing the UC-4 10k and 500k checkpoints lists the paired-different episodes; clicking one opens its replay with a ghost of the other (VP-12 when available). | v1 |
+| PE-04 | Remote policies: a policy served by another process or machine over ZMQ (pyzmq is already in the stack), so big GPU models such as VLAs can be evaluated without loading them into SimView. The sim waits for each action, so runs stay deterministic. | An example echo-policy server gives logs byte-identical to the same policy run in process. | v1 |
+| PE-05 | Failure clustering: group failed episodes by failed criterion and by randomized parameters (SR-01), showing the factors most linked to failure. | On data with a planted cause (fails when friction < 0.3), friction ranks first. | Future |
+
+### 5.16 Synthetic data (SD)
+
+*Since 1.5.* Many perception teams use simulators mainly to make labelled training data,
+because the simulator knows the exact truth for every pixel. VW-03 exports raw camera frames and
+VW-30 (Future) would train on them, but nothing exports labels in the formats training code already
+reads. Adding ground-truth labels and a seeded, randomized generation job turns SimView's scenes into
+a small, reproducible data engine with no new dependencies.
+
+| ID | Requirement | Acceptance | Tag |
+|---|---|---|---|
+| SD-01 | Ground-truth labels per camera frame: entity ID and class, 2D boxes (visible-pixel and full projected), 3D boxes in camera and world frames, and a visibility fraction, computed from scene geometry. | Projected 3D box corners agree with ray-cast hits within 1 px on test scenes; a fully occluded object is marked not visible. | v1 |
+| SD-02 | Export formats: COCO JSON (2D boxes; instance masks once SN-04 exists) and a KITTI-style 3D box text format, written beside the VW-03 dataset folder, using only the standard library. | Exported files pass a schema test and round-trip through SimView's own loader; an optional test loads them with `pycocotools` when installed. | v1 |
+| SD-03 | Dataset generation job: `simview datagen scene.py --frames N` runs randomized headless runs (SR-01 plus object placement, color and count) and writes a dataset with a manifest (seed and parameters per frame, class counts). | The same command and seed give a byte-identical dataset; the manifest's class counts match the labels. | v1 |
+
+### 5.17 Reproducibility and review (RP)
+
+*Since 1.5.* G4 promises bit-identical logs on one machine, but a run in the catalog does
+not record everything needed to reproduce it later or elsewhere: SimView, MuJoCo and NumPy versions,
+the exact scene source, toolbox versions, the OS. Reviewing a run with a colleague today means
+sharing a screen. NG5 rules out cloud collaboration, so this section does both with plain files: a
+manifest per run, a one-command reproduce check, a portable bundle, and timestamped review notes.
+
+| ID | Requirement | Acceptance | Tag |
+|---|---|---|---|
+| RP-01 | Run manifest: every run stores SimView, Python, MuJoCo and NumPy versions, installed toolboxes and versions, OS and CPU, the project's git commit and dirty flag (if it is a repo), hashes of scene files, diagrams and datasets, the seed, and parameters. Machine info (OS, CPU, hostname) is recorded by default and can be left out with a flag. | Present for UI, headless, Monte Carlo and eval runs; changing one byte of the scene changes its hash. | v1 |
+| RP-02 | Reproduce: `simview reproduce <run>` re-runs from the manifest and reports identical, or the first diverging signal and time (RI-05), and lists any environment differences. | Returns identical for every template on the same machine; with a different NumPy version it names that difference. | v1 |
+| RP-03 | Run bundles: export one or more runs as a single zip (logs, manifest, scene sources, report, notes) that another SimView opens read-only into its catalog. | A bundle made on Windows opens on macOS with replay and the report working. | v1 |
+| RP-04 | Review notes: timestamped notes and bookmarks on a run's timeline (author, time window, text, open/resolved), stored as a sidecar JSON, shown on the timeline, and included in reports and bundles. | Notes survive a bundle round trip; clicking a note moves the timeline like an RI-03 finding. | v1 |
+
+Experimental ideas that are not yet requirements (ROS 2 and autopilot bridges, cloud batch runs,
+VLA benchmarks, fleet operations, and more) are parked in [BACKLOG.md](BACKLOG.md).
 
 ---
 
@@ -614,6 +704,7 @@ Default workspace (MATLAB layout, Onshape finish):
 | Logging storage | Apache Arrow / Parquet (`pyarrow`) | Columnar, fast, compact, readable from pandas and polars. | HDF5: harder for concurrent access. |
 | RL | Gymnasium, Stable-Baselines3 (optional extra: `pip install simview[rl]`) | Standard RL interfaces. | RLlib: heavy. |
 | ML | PyTorch (optional extra) | Most common in research. | — |
+| Video (v1) | opencv-python-headless (optional extra: `pip install simview[video]`, VW-20) | Webcam and video-file reading. | PyAV: video files only, no webcam. |
 | Design assets | Inter + JetBrains Mono (OFL), Lucide icons (ISC), bundled in `src/simview/ui/assets/`. Theming via `qtpy` + a generated QSS. | Permissive licenses, cross-platform consistency, a modern look. | Platform-native fonts and icons: inconsistent across operating systems. |
 | Packaging | `pyproject.toml` (hatchling); later PyInstaller for standalone builds | Simple. | conda-only. |
 
@@ -756,7 +847,7 @@ simview/
 
 ## 10. MVP definition and milestone plan (12 weeks)
 
-**MVP cut:** every requirement tagged `[MVP]` above. M1–M10 are the original 12-week plan; M11 (PRD 1.4) follows M10.
+**MVP cut:** every requirement tagged `[MVP]` above. M1–M10 are the original 12-week plan; M11 (PRD 1.4) follows M10. M12 (PRD 1.5) follows M11 and builds `[v1]` items the owner chose to bring forward (D-137).
 
 **Hero demo (the portfolio centerpiece): UC-2, Drone Delivery.** A single screen shows:
 - the 3D fleet flying its routes with trails, the wind, and each EKF's covariance ellipsoid,
@@ -787,6 +878,7 @@ Stop for review after each one.
 | 11 | **M9: Monte Carlo + RL** | Sweep runner, results view, analysis functions, `make_env`, VecEnv, training panel, click-to-replay. | SE-08, SE-09, DA-05, DA-06, ML-01–ML-04 | 50-trial Monte Carlo finishes. `env_checker` passes. PPO trains drone landing to >80% success, with replay working. |
 | 12 | **M10: Polish + hero demo** | Performance pass against NF-01–NF-07, the 4 templates, README with GIFs, a hero demo recording, and `docs/ARCHITECTURE.md`. | NF-01–NF-09, TB-01, TB-02, DS-11 | All MVP requirement IDs pass, all NF targets are met or the gaps are documented, a design QA pass is done (screenshots of every panel in both themes checked against §7), and the demo video is recorded. |
 | 13–14 | **M11: Vision world model** (PRD 1.4) | Camera rigs, frame streams, recorded datasets (import and export), perception pipeline, back-projection, occupancy grid, BEV map, voxel / camera / BEV views, logging and replay of perceived worlds, accuracy metrics, `vision_drive` template. | VW-01–VW-11 | In `vision_drive`, the camera-only ego stops or steers clear of every obstacle in 20 of 20 seeded runs with no lidar and no ground-truth reads. Occupancy IoU ≥ 0.7 against ground truth for static obstacles within 20 m at 0.2 m voxels. A run exported as a dataset and replayed offline gives a byte-identical grid. 50k voxels render at ≥30 FPS. `vision_drive` runs headless at ≥1× real time on the reference hardware. All earlier tests still pass. |
+| 15–16 | **M12: Scenario tests + reproducibility** (PRD 1.5) | Test scenarios in Python or TOML with pass/fail criteria, suites and `simview test` with JUnit XML and HTML reports, baselines and a regression gate, run manifests, `simview reproduce`. | ST-01–ST-03, RP-01, RP-02 | The ST and RP acceptance criteria in §5.13 and §5.17 pass. A seeded suite with one planted failure exits 1 and names it in JUnit, the same both times. A PID gain change that worsens settling time >10% is flagged as a regression. `simview reproduce` returns identical for every template on the same machine. The hero demo's checks run as a suite. All earlier tests still pass. |
 
 ---
 

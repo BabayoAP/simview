@@ -163,3 +163,111 @@ class StateBuffer:
                 self.shm.unlink()
             except FileNotFoundError:
                 pass
+
+
+# -- perception frames (VW-08, PRD §8.5, D-134) ---------------------------------------------------
+# A FrameSlot holds the newest array of one perception stream (occupied voxel centres, a BEV
+# image, a camera thumbnail). Header: 8 int64 (seqlock, frame sequence number, nbytes, dtype
+# code, ndim, 3 dims), then META float64 values (time, origin, ...), then the data bytes.
+SLOT_INTS = 8
+SLOT_META = 8
+_SLOT_HEAD = (SLOT_INTS + SLOT_META) * 8
+_DTYPES = (np.dtype(np.uint8), np.dtype(np.float32), np.dtype(np.float64))
+
+
+@dataclass
+class SlotFrame:
+    """One consistent read of a FrameSlot."""
+
+    seq: int  # the stream's frame sequence number (counts up per published frame)
+    data: np.ndarray
+    meta: np.ndarray  # (SLOT_META,) float64; meaning depends on the stream kind
+
+
+class FrameSlot:
+    """Shared memory for the latest frame of one stream. The writer overwrites it in place;
+    a frame bigger than the slot needs a new slot (`fits()`), whose name the sim announces."""
+
+    def __init__(self, capacity: int = 0, name: str | None = None, create: bool = False) -> None:
+        size = _SLOT_HEAD + max(8, int(capacity)) if create else 0
+        self.shm = shared_memory.SharedMemory(name=name, create=create, size=size)
+        if self.shm.size < _SLOT_HEAD:
+            self.shm.close()
+            raise ValueError(f"shared memory {name!r} is too small for a frame slot")
+        self.ints = np.ndarray((SLOT_INTS,), dtype=np.int64, buffer=self.shm.buf)
+        self.meta = np.ndarray((SLOT_META,), dtype=np.float64, buffer=self.shm.buf[SLOT_INTS * 8 :])
+        if create:
+            self.ints[:] = 0
+            self.meta[:] = 0.0
+
+    @property
+    def name(self) -> str:
+        return self.shm.name
+
+    @property
+    def capacity(self) -> int:
+        return self.shm.size - _SLOT_HEAD
+
+    def fits(self, arr: np.ndarray) -> bool:
+        return arr.nbytes <= self.capacity
+
+    def write(self, seq: int, arr: np.ndarray, meta: tuple[float, ...] = ()) -> None:
+        arr = np.ascontiguousarray(arr)
+        if arr.ndim > 3 or arr.dtype not in _DTYPES:
+            raise ValueError(f"unsupported frame {arr.dtype} with {arr.ndim} dims")
+        if not self.fits(arr):
+            raise ValueError("frame larger than the slot")
+        if len(meta) > SLOT_META:
+            raise ValueError(f"a slot holds at most {SLOT_META} metadata values")
+        ints = self.ints
+        ints[0] += 1  # odd: writing
+        ints[1] = seq
+        ints[2] = arr.nbytes
+        ints[3] = _DTYPES.index(arr.dtype)
+        ints[4] = arr.ndim
+        ints[5:8] = [*arr.shape, 0, 0, 0][:3]
+        self.meta[:] = 0.0
+        self.meta[: len(meta)] = meta
+        self.shm.buf[_SLOT_HEAD : _SLOT_HEAD + arr.nbytes] = arr.reshape(-1).view(np.uint8)
+        ints[0] += 1  # even: done
+
+    def read(self, timeout: float = READ_TIMEOUT) -> SlotFrame | None:
+        """The newest frame (a copy), or None before the first one (or if the writer kept
+        racing for `timeout` seconds)."""
+        deadline = time.monotonic() + timeout
+        while True:
+            lock = int(self.ints[0])
+            if lock == 0:
+                return None
+            if lock % 2 == 0:
+                ints = self.ints.copy()
+                meta = self.meta.copy()
+                n = int(ints[2])
+                raw = bytes(self.shm.buf[_SLOT_HEAD : _SLOT_HEAD + n])
+                if int(self.ints[0]) == lock:
+                    return _slot_frame(ints, meta, raw, self.capacity)
+            if time.monotonic() > deadline:
+                return None
+            time.sleep(0)
+
+    def close(self, unlink: bool = False) -> None:
+        del self.ints, self.meta
+        self.shm.close()
+        if unlink:
+            try:
+                self.shm.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def _slot_frame(ints: np.ndarray, meta: np.ndarray, raw: bytes, capacity: int) -> SlotFrame | None:
+    """A frame from a consistent header copy, or None if the header doesn't describe a frame
+    that fits the slot (a damaged or foreign segment): sizes are checked before reading (D-136)."""
+    n, code, ndim = int(ints[2]), int(ints[3]), int(ints[4])
+    if not (0 <= n <= capacity and 0 <= code < len(_DTYPES) and 0 <= ndim <= 3):
+        return None
+    shape = tuple(int(v) for v in ints[5 : 5 + ndim])
+    dtype = _DTYPES[code]
+    if any(d < 0 for d in shape) or int(np.prod(shape, dtype=np.int64)) * dtype.itemsize != n:
+        return None
+    return SlotFrame(int(ints[1]), np.frombuffer(raw, dtype=dtype).reshape(shape), meta)

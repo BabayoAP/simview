@@ -152,6 +152,10 @@ def load(path: str | Path) -> Project:
         raise ProjectError(f"{manifest} is not valid JSON: {exc}") from exc
     if int(data.get("format", 0)) > FORMAT:
         raise ProjectError(f"{path.name} was saved by a newer SimView (format {data['format']})")
+    for key in ("scene", "script", "diagram"):  # D-136: files stay inside the project
+        rel = data.get(key)
+        if rel is not None and not (isinstance(rel, str) and _inside(path, rel)):
+            raise ProjectError(f"{manifest}: {key} {rel!r} is not a file inside the project")
     known = {"format", "name", "scene", "script", "diagram"}
     project = Project(
         path=path,
@@ -164,3 +168,12 @@ def load(path: str | Path) -> Project:
     for f in FOLDERS:  # a hand-made or older project may lack some
         project.folder(f).mkdir(parents=True, exist_ok=True)
     return project
+
+
+def _inside(root: Path, rel: str) -> bool:
+    """Whether `rel` is a relative path that stays inside `root` (symlinks resolved), so a
+    hand-edited project.json can't point the editor's saves outside the folder (D-136)."""
+    if not rel or Path(rel).is_absolute() or Path(rel).drive:
+        return False
+    base = root.resolve()
+    return (base / rel).resolve().is_relative_to(base)

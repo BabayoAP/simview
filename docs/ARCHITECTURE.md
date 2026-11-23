@@ -35,6 +35,7 @@ src/simview/
   core/         Scene, Entity, Scheduler, integrators, RNG, Logger, live params, debug draw
   physics/      one shared MuJoCo world per scene; URDF/MJCF import
   sensors/      IMU, GPS, seeker, camera, lidar (ray casts through MuJoCo)
+  perception/   camera rigs, frame streams, datasets, depth -> occupancy grid and BEV map
   blocks/       block diagrams: model + .svd file, library, compiler, runtime. Qt-free
   ipc/          sim process, client, shared-memory state, history rows, message protocol
   runner/       sv.run + Run handle, headless CLI, Monte Carlo sweeps
@@ -89,7 +90,10 @@ project, or `$SIMVIEW_RUNS` if set.
 three ways:
 
 - **Commands and events** over ZeroMQ: small dicts (run, pause, step, set a parameter, move a
-  target; stopped, error with traceback, printed output). A user-code exception pauses the run
+  target; stopped, error with traceback, printed output). The socket is on 127.0.0.1 only, and
+  every message is pickled and signed with HMAC-SHA256 under a random key made per sim process
+  and handed to it through `multiprocessing`; a message with a bad signature is dropped before
+  it is unpickled (`ipc/protocol.py`, D-136). A user-code exception pauses the run
   and is shown in the console; the process stays up. If the process dies, `poll()` reports it
   and the UI keeps going (NF-10).
 - **Live state** through one shared-memory float64 array (`ipc/shm.py`): entity states, marker
@@ -102,6 +106,18 @@ three ways:
 
 The scene description (what to draw: meshes, shapes, colors) is plain data built once in the sim
 process, so the viewport draws MuJoCo scenes without importing MuJoCo.
+
+## Perception (vision world model)
+
+`perception/` turns cameras into a 3D world model that controllers drive from (PRD §5.12,
+D-121..D-136). A `CameraRig` of simulated cameras (or a recorded dataset, `dataset.py`) feeds a
+`Pipeline` of stages: `BackProject` (depth to world points), `OccupancyGrid` (a fused 3D voxel
+grid) and `BevMap` (a bird's-eye height/occupancy map). Every stage's output is a named stream
+(`stream.py`), read in controllers as `ctx.streams["ego.occupancy"].latest()`. Streams run inside
+the scheduler's tick, so perception is as deterministic as the rest of a run. Runs log the
+perceived world in a file beside the Parquet log (`runlog.py`), and the app's Cameras and BEV
+panels replay it with the timeline. Conventions: metres, world frame, Z up; camera poses are
+world-from-camera in the OpenCV optical frame; depth is float32 z-depth.
 
 ## The UI
 

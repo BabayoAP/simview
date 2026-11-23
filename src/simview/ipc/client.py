@@ -17,6 +17,7 @@ from typing import Any
 import zmq
 
 from simview.ipc import protocol as proto
+from simview.ipc.perception import PerceptionIn
 from simview.ipc.record import RowLayout
 from simview.ipc.server import serve
 from simview.ipc.shm import Frame, Layout, StateBuffer
@@ -32,7 +33,9 @@ class SimClient:
         self.description: proto.Description | None = None
         self.row_layout: RowLayout | None = None  # history row columns (VP-05, DA-01)
         self.scene_path: Path | None = None
+        self.key = b""  # per-session message signing key, set by start() (D-136)
         self._dead_reported = False
+        self.perception = PerceptionIn()  # VW-08: newest perception frames (D-134)
 
     # -- lifecycle --------------------------------------------------------------------------
     def start(self, scene_path: str | Path) -> None:
@@ -40,10 +43,14 @@ class SimClient:
         self.stop()
         self.scene_path = Path(scene_path).resolve()
         self.sock = self.ctx.socket(zmq.PAIR)
-        port = self.sock.bind_to_random_port("tcp://127.0.0.1")
+        port = self.sock.bind_to_random_port("tcp://127.0.0.1")  # loopback only (D-136)
+        self.key = proto.new_key()  # signs every message both ways
         spawn = mp.get_context("spawn")  # same behavior on every OS; no forked Qt state
+        # The key goes through multiprocessing's pipe, not the child's command line.
         self.proc = spawn.Process(
-            target=serve, args=(str(self.scene_path), f"tcp://127.0.0.1:{port}"), daemon=True
+            target=serve,
+            args=(str(self.scene_path), f"tcp://127.0.0.1:{port}", self.key),
+            daemon=True,
         )
         with _no_main_file():
             self.proc.start()
@@ -68,6 +75,7 @@ class SimClient:
             self.sock = None
 
     def _release(self) -> None:
+        self.perception.clear()
         if self.buffer is not None:
             self.buffer.close()
             self.buffer = None
@@ -75,7 +83,7 @@ class SimClient:
     # -- commands ---------------------------------------------------------------------------------
     def send(self, cmd: str, **kw: Any) -> None:
         if self.sock is not None and self.alive:
-            self.sock.send_pyobj({"cmd": cmd, **kw})
+            proto.send(self.sock, self.key, {"cmd": cmd, **kw})
 
     def play(self) -> None:
         self.send(proto.PLAY)
@@ -112,13 +120,17 @@ class SimClient:
         """All pending events. READY attaches the state buffer; a dead process is reported once."""
         events: list[dict[str, Any]] = []
         while self.sock is not None and self.sock.poll(0):
-            ev = self.sock.recv_pyobj()
+            ev = proto.recv(self.sock, self.key)
+            if not isinstance(ev, dict):
+                continue  # unsigned or forged: dropped unread (D-136)
             if ev.get("event") == proto.READY:
                 self._release()
                 self.layout = ev["layout"]
                 self.description = ev["description"]
                 self.row_layout = ev["rows"]
                 self.buffer = StateBuffer(ev["layout"], name=ev["shm"])
+            elif ev.get("event") == proto.FRAMES:
+                self.perception.on_event(ev)
             events.append(ev)
         if self.proc is not None and not self.proc.is_alive() and not self._dead_reported:
             self._dead_reported = True

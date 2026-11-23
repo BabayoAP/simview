@@ -52,6 +52,13 @@ def test_combo_box_has_frame_and_tinted_arrow(theme):
     assert Path(path).read_bytes() == svg_for("chevron-down", color)
 
 
+def test_dock_tabs_use_tighter_padding():
+    # M11 adds Cameras and BEV Map to the Console / Runs / Training tab group; with the
+    # QTabWidget padding the five labels were elided ("Ru...", "Camer...") at 1600 px.
+    qss = build_qss("dark")
+    assert f"QMainWindow > QTabBar::tab {{\n    padding: {tokens.SPACING[1]}px" in qss
+
+
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_check_boxes_are_visible(theme):
     # M10 design QA: the native unchecked box was near-invisible on the light theme's white

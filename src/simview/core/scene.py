@@ -55,6 +55,11 @@ class Context:
         return self.sim.params
 
     @property
+    def streams(self) -> dict[str, Any]:
+        """Perception streams by name (VW-02): rig cameras and pipeline outputs."""
+        return self.sim.streams
+
+    @property
     def action(self) -> Any:
         """The RL policy's latest action (ML-01), or None when the scene isn't run as an env."""
         return self.sim.action
@@ -114,6 +119,7 @@ class Scene:
         self.diagrams: dict[str, Any] = {}  # BD-04/05: name -> blocks.runtime.DiagramRun
         self.metrics: dict[str, Callable[[Any], float]] = {}  # SE-08: name -> fn(run)
         self.task: dict[str, Any] | None = None  # ML-01: the scene's RL task, see rl_task()
+        self.pipelines: list[Any] = []  # VW-04: perception pipelines, see add_pipeline()
 
     def _param_declared(self, name: str, value: Value) -> None:
         if isinstance(value, float):
@@ -462,6 +468,19 @@ class Scene:
         run = DiagramRun(self, diagram, name, rate, integrator, base)  # type: ignore[arg-type]
         self.diagrams[name] = run
         return run
+
+    def add_pipeline(self, pipeline: Any) -> Any:  # noqa: ANN401 - a perception.Pipeline
+        """Run a perception pipeline (VW-04) in this scene: it steps inside the tick, right
+        after sensors sample, at its own rate. Its outputs read as `ctx.streams[...]`."""
+        if pipeline.rate is not None:
+            self.controller(pipeline.rate)  # validates the rate
+        if any(p is pipeline or p.name == pipeline.name for p in self.pipelines):
+            raise ValueError(f"a pipeline named {pipeline.name!r} is already added")
+        log = getattr(pipeline, "log", None)
+        if log is not None and hasattr(log, "attach"):
+            log.attach(self)  # VW-09: `<entity>.perception.*` signals in the run log
+        self.pipelines.append(pipeline)
+        return pipeline
 
     def log(self, name: str, fn: LogFn, unit: str = "") -> None:
         """Log a user-tagged channel each tick. `fn(sim)` returns a float (SE-06).

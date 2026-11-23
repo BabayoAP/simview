@@ -15,9 +15,10 @@ recorded by `tools/record_hero_demo.py`.*
 *Autonomous Vehicle: a bicycle-model car with lidar and a camera follows the road and its NPC
 traffic.*
 
-> Status: M1–M9 are on `main` (physics and robots, viewport, plots and timeline, run
+> Status: M1–M11 are on `main` (physics and robots, viewport, plots and timeline, run
 > investigation, console, block editor, sensors and the aero/vehicle toolboxes, Monte Carlo and
-> RL). M10 (polish and hero demo) is in progress. See [docs/PRD.md](docs/PRD.md) for the
+> RL, polish and the hero demo, the camera-only vision world model). M12 (scenario tests and
+> reproducibility) is next. See [docs/PRD.md](docs/PRD.md) for the
 > milestone plan, [docs/PROGRESS.md](docs/PROGRESS.md) for where things stand, and
 > [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the code fits together.
 

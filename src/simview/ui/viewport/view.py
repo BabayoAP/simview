@@ -106,6 +106,8 @@ class Viewport(QWidget):
         self.fps = 0.0
         self._frames_drawn: list[float] = []
         self.cursor_world: np.ndarray | None = None
+        self.geometry_mode = model.GEOMETRY_MODES[0]  # VW-08: perceived and/or true geometry
+        self._voxels: tuple[np.ndarray, float] | None = None  # shown voxel centres, size
         self._build_static()
 
     # ------------------------------------------------------------------ setup
@@ -186,6 +188,7 @@ class Viewport(QWidget):
             name="world_axes",
         )
         self.world_axes.SetVisibility(self.options["grid"])
+        self._build_voxels()
         axis = {a: tokens.AXIS_COLORS[a] for a in "xyz"}  # §7.3: X red, Y green, Z blue
         p.add_axes(line_width=2, x_color=axis["x"], y_color=axis["y"], z_color=axis["z"])
         self.view_cube = p.add_camera_orientation_widget()  # ViewCube, top right (DS-04)
@@ -222,6 +225,58 @@ class Viewport(QWidget):
         self._build_toolbar()
         cam = nav.Camera(position=np.array([2.0, -2.0, 1.5]), focal=np.array([0.0, 0.0, 0.3]))
         self.set_camera(cam)
+
+    def _build_voxels(self) -> None:
+        """VW-08: occupied voxels as one GPU-instanced cube per centre, colored by height. The
+        actor and mapper stay; `set_voxels` swaps the mapper's input in place."""
+        self.voxel_mapper = vtk.vtkGlyph3DMapper()
+        self._voxel_res = 0.0
+        self.voxel_mapper.SetSourceData(model.voxel_cube(1.0))
+        self.voxel_mapper.ScalingOff()
+        self.voxel_mapper.OrientOff()
+        self.voxel_mapper.SetScalarModeToUsePointFieldData()
+        self.voxel_mapper.SelectColorArray("rgb")
+        self.voxel_mapper.SetColorModeToDirectScalars()
+        self.voxel_mapper.SetInputData(model.voxel_points(np.empty((0, 3))))
+        self.voxel_actor = vtk.vtkActor()
+        self.voxel_actor.SetMapper(self.voxel_mapper)
+        self.voxel_actor.SetPickable(False)
+        self.voxel_actor.SetVisibility(False)
+        self.renderer.AddActor(self.voxel_actor)
+        if self._voxels is not None:
+            self.set_voxels(*self._voxels)
+
+    def set_voxels(self, centers: np.ndarray | None, res: float = 0.0) -> None:
+        """Show occupied voxel centres (N, 3) of size `res` m; None clears them."""
+        if centers is None or len(centers) == 0:
+            self._voxels = None
+            self.voxel_mapper.SetInputData(model.voxel_points(np.empty((0, 3))))
+        else:
+            self._voxels = (centers, res)
+            if res != self._voxel_res:
+                self._voxel_res = res
+                self.voxel_mapper.SetSourceData(model.voxel_cube(res))
+            self.voxel_mapper.SetInputData(model.voxel_points(centers))
+        self._apply_geometry_mode()
+
+    @property
+    def voxel_count(self) -> int:
+        return 0 if self._voxels is None else len(self._voxels[0])
+
+    def set_geometry_mode(self, mode: str) -> None:
+        """VW-08: "both", "perceived" (voxels only), or "true" (scene geometry only)."""
+        if mode not in model.GEOMETRY_MODES:
+            raise ValueError(f"geometry mode must be one of {model.GEOMETRY_MODES}")
+        self.geometry_mode = mode
+        self._apply_geometry_mode()
+
+    def _apply_geometry_mode(self) -> None:
+        true_on = self.geometry_mode != "perceived"
+        for a in self.geom_actors + list(self.visual_actors.values()):
+            a.SetVisibility(true_on)
+        for _, ea in self.edge_actors:
+            ea.SetVisibility(true_on and self.display_mode == "shaded+edges")
+        self.voxel_actor.SetVisibility(self.geometry_mode != "true" and self._voxels is not None)
 
     def _apply_background(self) -> None:
         c = tokens.color
@@ -772,8 +827,7 @@ class Viewport(QWidget):
         self.display_mode = mode
         for a in self.geom_actors:
             a.prop.style = "wireframe" if mode == "wireframe" else "surface"
-        for _, ea in self.edge_actors:
-            ea.SetVisibility(mode == "shaded+edges")
+        self._apply_geometry_mode()
 
     # ------------------------------------------------------------------ camera
     def camera(self) -> nav.Camera:

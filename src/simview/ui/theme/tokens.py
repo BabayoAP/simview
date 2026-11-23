@@ -146,6 +146,26 @@ FLY_STEP: Final = 0.02  # fraction of the scene size per fly-mode key event
 DRAW_POINT_SIZE: Final = 8  # px, debug-draw default (VP-07)
 ELLIPSOID_OPACITY: Final = 0.25  # covariance ellipsoid surface (VP-09)
 
+# Perception views (VW-08). Sequential maps use viridis (§7.3): 9 evenly spaced stops,
+# interpolated linearly in RGB. Voxels are colored by height over VOXEL_HEIGHT_RANGE.
+VIRIDIS: Final[tuple[str, ...]] = (
+    "#440154",
+    "#472D7B",
+    "#3B528B",
+    "#2C728E",
+    "#21918C",
+    "#28AE80",
+    "#5EC962",
+    "#ADDC30",
+    "#FDE725",
+)
+VOXEL_HEIGHT_RANGE: Final = (0.0, 3.0)  # m mapped to the ends of the colormap
+VOXEL_FILL: Final = 0.92  # cube edge as a fraction of the voxel size (gaps show the grid)
+CAMERA_THUMB_WIDTH: Final = 160  # px, a thumbnail in the Cameras panel's grid
+CAMERA_ENLARGED_WIDTH: Final = 480  # px, the enlarged camera view (scales up to fit)
+BEV_EGO_SIZE: Final = 10  # px, length of the ego pose arrow on the BEV map
+BEV_EGO_WIDTH: Final = 2  # px, its outline
+
 # Timeline (§7.4) and plots (§7.6).
 TIMELINE_READOUT_WIDTH: Final = 230  # px, fits "t = 1234.567 s / 1234.567 s  replay"
 PLOT_LINE_WIDTH: Final = 1.5  # px, data

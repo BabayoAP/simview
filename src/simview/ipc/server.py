@@ -18,6 +18,7 @@ import numpy as np
 import zmq
 
 from simview.ipc import protocol as proto
+from simview.ipc.perception import PerceptionOut
 from simview.ipc.record import RowLayout, record_row, replay_rows, row_layout
 from simview.ipc.shm import Layout, StateBuffer
 
@@ -30,8 +31,8 @@ RTF_WINDOW = 0.5  # s of wall time the reported real-time factor averages over
 class _Forward(io.TextIOBase):
     """stdout/stderr of scene code -> LOG events."""
 
-    def __init__(self, sock: zmq.Socket, stream: str) -> None:
-        self.sock, self.stream = sock, stream
+    def __init__(self, server: Server, stream: str) -> None:
+        self.server, self.stream = server, stream
         self._pending = ""
 
     def write(self, s: str) -> int:
@@ -39,18 +40,19 @@ class _Forward(io.TextIOBase):
         self._pending += s
         if "\n" in self._pending:
             lines, self._pending = self._pending.rsplit("\n", 1)
-            self.sock.send_pyobj({"event": proto.LOG, "stream": self.stream, "text": lines + "\n"})
+            self.server.send({"event": proto.LOG, "stream": self.stream, "text": lines + "\n"})
         return len(s)
 
     def flush(self) -> None:
         if self._pending:
             text, self._pending = self._pending, ""
-            self.sock.send_pyobj({"event": proto.LOG, "stream": self.stream, "text": text})
+            self.server.send({"event": proto.LOG, "stream": self.stream, "text": text})
 
 
 class Server:
-    def __init__(self, scene_path: str, address: str) -> None:
+    def __init__(self, scene_path: str, address: str, key: bytes = b"") -> None:
         self.scene_path = scene_path
+        self.key = key  # signs every message both ways (D-136); SimClient passes a random one
         self.ctx = zmq.Context()
         self.sock = self.ctx.socket(zmq.PAIR)
         self.sock.connect(address)
@@ -64,6 +66,7 @@ class Server:
         self._pace_wall = 0.0
         self._pace_sim = 0.0
         self._last_draws: list[tuple] | None = None
+        self.perception: PerceptionOut | None = None  # VW-08: perception frames out (D-134)
         self.row_layout: RowLayout | None = None
         self._rows: list[np.ndarray] = []  # recorded since the last publish
         self._rtf_samples: list[tuple[float, float]] = []  # (wall, sim t) over RTF_WINDOW
@@ -83,7 +86,11 @@ class Server:
         except Exception:  # noqa: BLE001 - any user error must reach the console (NF-10)
             self.error()
             return False
+        self._close_sim()  # the previous run ends: its pipelines finish their files
         self.scene, self.sim = scene, sim
+        if self.perception is not None:
+            self.perception.close()
+        self.perception = PerceptionOut(sim)
         markers = [e.name for e in desc.entities if e.has_marker]
         n_bodies = scene.world.model.nbody if scene.world is not None else 0
         layout = Layout.build(
@@ -97,7 +104,7 @@ class Server:
         self.buffer = StateBuffer(layout, create=True)
         self.row_layout = row_layout(scene, layout)
         self._rows = []
-        self.sock.send_pyobj(
+        self.send(
             {
                 "event": proto.READY,
                 "layout": layout,
@@ -129,11 +136,23 @@ class Server:
             if self.scene.world is not None:
                 self.scene.world.reset()
             self.sim.tick = 0
-        self.sock.send_pyobj({"event": proto.REPLAYED, "rows": rows, "dt": dt, "path": path})
+        self.send({"event": proto.REPLAYED, "rows": rows, "dt": dt, "path": path})
+
+    def _close_sim(self) -> None:
+        """End the current run (`Sim.close()`); a failing user `close()` reaches the console."""
+        if self.sim is None:
+            return
+        try:
+            self.sim.close()
+        except Exception:  # noqa: BLE001 - a user stage's close() must not kill the sim
+            self.error()
+
+    def send(self, msg: dict[str, Any]) -> None:
+        proto.send(self.sock, self.key, msg)
 
     def error(self) -> None:
         self.running = False
-        self.sock.send_pyobj({"event": proto.ERROR, "traceback": traceback.format_exc()})
+        self.send({"event": proto.ERROR, "traceback": traceback.format_exc()})
 
     # -- state out ------------------------------------------------------------------------------
     def record(self) -> None:
@@ -154,7 +173,7 @@ class Server:
             bodies = np.hstack([d.xpos, d.xquat])
         if self._rows:
             rows, self._rows = np.vstack(self._rows), []
-            self.sock.send_pyobj({"event": proto.ROWS, "rows": rows})
+            self.send({"event": proto.ROWS, "rows": rows})
         layout = self.buffer.layout
         self.buffer.write(
             tick=sim.tick,
@@ -170,7 +189,10 @@ class Server:
         draws = proto.draws_payload(sim.draw.snapshot())
         if not proto.same_draws(self._last_draws, draws):
             self._last_draws = draws
-            self.sock.send_pyobj({"event": proto.DRAWS, "draws": draws, "tick": sim.tick})
+            self.send({"event": proto.DRAWS, "draws": draws, "tick": sim.tick})
+        if self.perception is not None and self.perception.active:
+            for ev in self.perception.events():
+                self.send(ev)
 
     # -- commands -------------------------------------------------------------------------------
     def handle(self, msg: dict[str, Any]) -> bool:
@@ -208,8 +230,8 @@ class Server:
             try:
                 self.sim.params.set(str(msg["name"]), msg["value"])
             except (AttributeError, TypeError) as exc:
-                self.sock.send_pyobj({"event": proto.LOG, "stream": "stderr", "text": f"{exc}\n"})
-            self.sock.send_pyobj({"event": proto.PARAMS, "values": self.sim.params.to_dict()})
+                self.send({"event": proto.LOG, "stream": "stderr", "text": f"{exc}\n"})
+            self.send({"event": proto.PARAMS, "values": self.sim.params.to_dict()})
         elif cmd == proto.BODY_POSE:
             body = self.scene[msg["name"]]
             body.x[:3] = msg["pos"]
@@ -240,8 +262,23 @@ class Server:
 
     # -- loop -----------------------------------------------------------------------------------
     def run(self) -> None:
-        sys.stdout = _Forward(self.sock, "stdout")  # type: ignore[assignment]
-        sys.stderr = _Forward(self.sock, "stderr")  # type: ignore[assignment]
+        sys.stdout = _Forward(self, "stdout")  # type: ignore[assignment]
+        sys.stderr = _Forward(self, "stderr")  # type: ignore[assignment]
+        try:
+            self._loop()
+        finally:  # also on a crash: shared memory is unlinked and the run's files finished
+            self._close_sim()
+            if self.buffer is not None:
+                self.buffer.close(unlink=True)
+                self.buffer = None
+            if self.perception is not None:
+                self.perception.close()
+            sys.stdout, sys.stderr = sys.__stdout__, sys.__stderr__  # the socket closes next
+            self.send({"event": proto.STOPPED})
+            self.sock.close(linger=500)
+            self.ctx.term()
+
+    def _loop(self) -> None:
         self.load()
         poller = zmq.Poller()
         poller.register(self.sock, zmq.POLLIN)
@@ -249,7 +286,10 @@ class Server:
         while alive:
             timeout = 0 if self.running else IDLE_POLL_MS
             while dict(poller.poll(timeout)).get(self.sock):
-                if not self.handle(self.sock.recv_pyobj()):
+                msg = proto.recv(self.sock, self.key)
+                if not isinstance(msg, dict):
+                    continue  # unsigned or forged: dropped unread (D-136)
+                if not self.handle(msg):
                     alive = False
                     break
                 timeout = 0
@@ -275,13 +315,8 @@ class Server:
                     break
             self._measure_rtf()
             self.publish()
-        if self.buffer is not None:
-            self.buffer.close(unlink=True)
-        self.sock.send_pyobj({"event": proto.STOPPED})
-        self.sock.close(linger=500)
-        self.ctx.term()
 
 
-def serve(scene_path: str, address: str) -> None:
-    """Entry point of the sim process."""
-    Server(scene_path, address).run()
+def serve(scene_path: str, address: str, key: bytes) -> None:
+    """Entry point of the sim process; `key` signs the messages (D-136)."""
+    Server(scene_path, address, key).run()

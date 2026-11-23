@@ -159,4 +159,4 @@ def test_start_screen_shows_toolbox_templates(site, qapp, settings):
 
     screen = StartScreen(settings)
     assert [c.template_id for c in screen.cards][-1] == "harbor"
-    assert len(screen.cards) == 5
+    assert len(screen.cards) == 6  # 4 flagship + vision_drive (built-in toolbox) + harbor
