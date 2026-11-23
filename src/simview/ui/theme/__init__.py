@@ -37,18 +37,27 @@ def apply_theme(app: QApplication, theme: ThemeName) -> None:
     _current = theme
     _icon.cache_clear()
     app.setPalette(build_palette(theme))
-    app.setStyleSheet(build_qss(theme, _combo_arrow(theme)))
+    app.setStyleSheet(build_qss(theme, _combo_arrow(theme), _check_mark(theme)))
 
 
-def _combo_arrow(theme: ThemeName) -> str:
-    """Write the tinted chevron for QComboBox::down-arrow to a file (QSS images need a path;
-    a styled combo box drops the native arrow) and return its path with forward slashes."""
-    path = Path(tempfile.gettempdir()) / "simview-theme" / f"chevron-down-{theme}.svg"
-    data = svg_for("chevron-down", tokens.color(theme, "text.secondary"))
+def _icon_file(name: str, theme: ThemeName, token: str) -> str:
+    """Write a tinted Lucide icon to a file for a QSS `image: url(...)` (QSS images need a
+    path; styled combo boxes and check boxes drop the native glyphs) and return the path
+    with forward slashes."""
+    path = Path(tempfile.gettempdir()) / "simview-theme" / f"{name}-{theme}-{token}.svg"
+    data = svg_for(name, tokens.color(theme, token))
     if not path.is_file() or path.read_bytes() != data:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
     return path.as_posix()
+
+
+def _combo_arrow(theme: ThemeName) -> str:
+    return _icon_file("chevron-down", theme, "text.secondary")
+
+
+def _check_mark(theme: ThemeName) -> str:
+    return _icon_file("check", theme, "text.on_accent")
 
 
 def build_palette(theme: ThemeName) -> QPalette:

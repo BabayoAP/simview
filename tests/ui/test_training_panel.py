@@ -40,11 +40,15 @@ def test_panel_follows_the_newest_run_and_plots_checked_metrics(qapp, runs, monk
     assert {"episode/return", "episode/length", "episode/success", "train/loss"} <= set(names)
     assert p.checked() == [EPISODE_RETURN]  # the default
     assert len(p.items[EPISODE_RETURN].getData()[0]) == 4
+    # §7.6: one curve is named by a short axis label and the legend stays off the data
+    assert not p.legend.isVisible()
+    assert p.plot.getAxis("left").labelText == "return"
     assert len(p.recorded.data) == 2  # episodes 0 and 2 have logs
     assert "4 episodes" in p.summary.text() and "2 recorded" in p.summary.text()
     loss = p.metrics.findItems("train/loss", Qt.MatchFlag.MatchExactly)[0]
     loss.setCheckState(Qt.CheckState.Checked)
     assert "train/loss" in p.items
+    assert p.legend.isVisible() and p.plot.getAxis("left").labelText == ""
     # training goes on: more episodes appear on the next poll
     monkeypatch.setenv(TRAINING_ENV, str(p.run.folder))
     train_some(p.run.folder, episodes=2)

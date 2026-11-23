@@ -52,6 +52,21 @@ def test_combo_box_has_frame_and_tinted_arrow(theme):
     assert Path(path).read_bytes() == svg_for("chevron-down", color)
 
 
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_check_boxes_are_visible(theme):
+    # M10 design QA: the native unchecked box was near-invisible on the light theme's white
+    # panels. The border is `text.secondary` (>= 4.5:1 on every surface, so past WCAG 1.4.11's
+    # 3:1); checked is an accent-filled box with a check icon file.
+    from simview.ui.theme import _check_mark, svg_for
+
+    path = _check_mark(theme)
+    qss = build_qss(theme, None, path)
+    c = tokens.COLORS[theme]
+    assert re.search(r"QAbstractItemView::indicator \{[^}]*border:[^}]*" + c["text.secondary"], qss)
+    assert f"image: url({path});" in qss
+    assert Path(path).read_bytes() == svg_for("check", tokens.color(theme, "text.on_accent"))
+
+
 def test_no_hex_colors_outside_theme():
     offenders = []
     for path in UI_DIR.rglob("*.py"):

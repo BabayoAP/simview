@@ -119,6 +119,9 @@ TEMPLATE_GLYPH: Final = 48
 ICON_SIZE_TOOLBAR: Final = 16
 ICON_SIZE_START: Final = 20
 ICON_SIZE_INLINE: Final = 12  # small glyphs inside a control (combo box arrow)
+CHECK_SIZE: Final = 14  # check box indicator
+RADIUS_CHECK: Final = 3
+LEGEND_ALPHA: Final = 200  # plot legend background opacity (0-255), over the data
 ICON_STROKE: Final = 1.5
 
 # Viewport (§7.5).
